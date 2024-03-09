@@ -1,0 +1,91 @@
+<li class="list-group-item bg-dark text-light">
+  <div class="d-flex gap-5">
+    <% for (let j = 0; j < data.length; j++) { %> <% if (userInfo[i]["game_id"]
+    == data[j]["game_id"]) { %>
+    <div>
+      <img src="<%= data[j]["sample_cover"]["image"]%>" alt="game cover" />
+    </div>
+    <div class="d-flex gap-5">
+      <div class="d-flex flex-column">
+        <div class="d-flex justify-content-between">
+          <h6>
+            Released: <%= data[j]["platforms"][0]["first_release_date"] %>
+          </h6>
+          <% } %> <% } %>
+
+          <h6>Completed: <%= userInfo[i]["completed"] %></h6>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+          <% let num = Math.floor(userInfo[i]["rating"]) %> <% for (let i = 0; i
+          < num; i++) { %>
+          <div class="star">
+            <img src="images/star.png" />
+          </div>
+          <% } %> <% let remainder = Math.round((userInfo[i]["rating"] %1) *
+          100) / 100; %> <% if (remainder > 0) { %>
+          <div class="crop">
+            <img
+              src="images/star.png"
+              style="clip-path: inset(0 <%= 100 - (remainder * 100) %>% 0 0)"
+            />
+          </div>
+          <% } %>
+        </div>
+        <h2 class="mt-2"><%= userInfo[i]["title"] %></h2>
+        <div class="h-100 d-flex mt-2">
+          <p><%= userInfo[i]["notes"] %></p>
+        </div>
+      </div>
+      <div class="d-flex flex-column justify-content-between mt-2 mb-2">
+        <form action="/edit" method="post">
+          <button
+            class="btn btn-primary w-100 d-flex align-items-center justify-content-center"
+            name="edit"
+            value="<%= userInfo[i]["game_id"] %>"
+          >
+            <svg
+              class="edit"
+              width="800px"
+              height="800px"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <title />
+
+              <g id="Complete">
+                <g id="edit">
+                  <g>
+                    <path
+                      d="M20,16v4a2,2,0,0,1-2,2H4a2,2,0,0,1-2-2V6A2,2,0,0,1,4,4H8"
+                      fill="none"
+                      stroke="#f7f7f7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                    />
+
+                    <polygon
+                      fill="none"
+                      points="12.5 15.8 22 6.2 17.8 2 8.3 11.5 8 16 12.5 15.8"
+                      stroke="#f7f7f7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                    />
+                  </g>
+                </g>
+              </g>
+            </svg>
+          </button>
+        </form>
+        <form action="/delete" method="post">
+          <button class="btn btn-danger" name="delete" value="<%= userInfo[i]["game_id"] %>">
+<svg width="800px" height="800px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M10 12L14 16M14 12L10 16M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke="#f7f7f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</li>

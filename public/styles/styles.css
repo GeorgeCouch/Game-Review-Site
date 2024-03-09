@@ -1,0 +1,25 @@
+img {
+  width: 280px;
+  height: 367px;
+  border-radius: 10px;
+}
+
+.star img {
+  width: 20px;
+  height: 20px;
+}
+
+.crop img {
+  width: 20px;
+  height: 20px;
+}
+
+svg {
+  width: 24px;
+  height: 24px;
+}
+
+#github {
+  width: 30px;
+  height: 30px;
+}
