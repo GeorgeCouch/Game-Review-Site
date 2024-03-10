@@ -92,6 +92,7 @@ app.get("/", async (req, res) => {
     ids += "&id=" + userInfo[i]["game_id"];
   }
   const result = await axios.get(API_URL + ids);
+  console.log(result.data["games"][0]["sample_cover"]["image"]);
   res.render("index.ejs", {
     userInfo: userInfo,
     data: result.data["games"],
@@ -217,6 +218,7 @@ app.get("/secrets", (req, res) => {
 });
 //#endregion
 
+//#region Routes for google auth
 app.get(
   "/auth/google",
   passport.authenticate("google", {
@@ -231,13 +233,16 @@ app.get(
     failureRedirect: "/login",
   })
 );
+//#endregion
 
+//#region logout
 app.get("/logout", (req, res) => {
   req.logout((err) => {
     if (err) console.log(err);
     res.redirect("/");
   });
 });
+//#endregion
 
 //#region Passport Local Strategy
 //passport local auth strategy method, this is where login post sends to (passport.authenticate("local")) and returns back result
@@ -270,6 +275,7 @@ passport.use(
 );
 //#endregion
 
+//#region Passport Google Strategy
 passport.use(
   "google",
   new GoogleStrategy(
@@ -300,6 +306,7 @@ passport.use(
     }
   )
 );
+//#endregion
 
 //#region Serialize and Deserialize user
 //stores information about the user into the session
