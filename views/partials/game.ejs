@@ -1,91 +1,140 @@
-<li class="list-group-item bg-dark text-light">
-  <div class="d-flex gap-5">
-    <% for (let j = 0; j < data.length; j++) { %> <% if (userInfo[i]["game_id"]
-    == data[j]["game_id"]) { %>
-    <div>
-      <img src="<%= data[j]["sample_cover"]["image"]%>" alt="game cover" />
+<%
+  // Find matching API data for this game
+  let coverUrl = null;
+  let releaseDate = userInfo[i].released || "Unknown";
+  if (typeof data !== "undefined" && data && data.length) {
+    for (let j = 0; j < data.length; j++) {
+      if (data[j].game_id == userInfo[i].game_id) {
+        if (data[j].sample_cover && data[j].sample_cover.image) {
+          coverUrl = data[j].sample_cover.image;
+        }
+        if (data[j].platforms && data[j].platforms[0] && data[j].platforms[0].first_release_date) {
+          releaseDate = data[j].platforms[0].first_release_date;
+        }
+        break;
+      }
+    }
+  }
+
+  // Stars
+  const rating = parseFloat(userInfo[i].rating) || 0;
+  const fullStars = Math.floor(rating);
+  const hasHalf = (rating % 1) >= 0.5;
+
+  const reviewId = userInfo[i].id;
+  const comments = (typeof commentsByReview !== "undefined" && commentsByReview[reviewId]) ? commentsByReview[reviewId] : [];
+  const notes = userInfo[i].notes || "";
+  const isLong = notes.length > 180;
+%>
+
+<div class="game-card" id="review-<%= reviewId %>">
+  <% if (coverUrl) { %>
+    <img class="game-cover" src="<%= coverUrl %>" alt="<%= userInfo[i].title %> cover" loading="lazy" />
+  <% } else { %>
+    <div class="game-cover-placeholder">No cover available</div>
+  <% } %>
+
+  <div class="game-content">
+    <div class="game-meta">
+      <span>Released: <%= releaseDate %></span>
+      <span>Completed: <%= userInfo[i].completed || "—" %></span>
+      <% if (userInfo[i].author_email) { %>
+        <span>By: <%= userInfo[i].author_email %></span>
+      <% } %>
     </div>
-    <div class="d-flex gap-5">
-      <div class="d-flex flex-column">
-        <div class="d-flex justify-content-between">
-          <h6>
-            Released: <%= data[j]["platforms"][0]["first_release_date"] %>
-          </h6>
-          <% } %> <% } %>
 
-          <h6>Completed: <%= userInfo[i]["completed"] %></h6>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          <% let num = Math.floor(userInfo[i]["rating"]) %> <% for (let i = 0; i
-          < num; i++) { %>
-          <div class="star">
-            <img src="images/star.png" />
-          </div>
-          <% } %> <% let remainder = Math.round((userInfo[i]["rating"] %1) *
-          100) / 100; %> <% if (remainder > 0) { %>
-          <div class="crop">
-            <img
-              src="images/star.png"
-              style="clip-path: inset(0 <%= 100 - (remainder * 100) %>% 0 0)"
-            />
-          </div>
-          <% } %>
-        </div>
-        <h2 class="mt-2"><%= userInfo[i]["title"] %></h2>
-        <div class="h-100 d-flex mt-2">
-          <p><%= userInfo[i]["notes"] %></p>
-        </div>
+    <div class="stars">
+      <% for (let s = 1; s <= 5; s++) { %>
+        <% if (s <= fullStars) { %>
+          <span class="star">★</span>
+        <% } else if (s === fullStars + 1 && hasHalf) { %>
+          <span class="star">★</span>
+        <% } else { %>
+          <span class="star empty">★</span>
+        <% } %>
+      <% } %>
+      <span style="margin-left: 6px; color: var(--text-muted); font-size: 0.85rem;"><%= rating.toFixed(1) %></span>
+    </div>
+
+    <h2 class="game-title"><%= userInfo[i].title %></h2>
+
+    <div class="game-notes-wrap">
+      <p class="game-notes<%= isLong ? ' clamped' : '' %>" id="notes-<%= reviewId %>"><%= notes %></p>
+      <% if (isLong) { %>
+        <button type="button" class="expand-btn" onclick="toggleNotes(<%= reviewId %>)" id="expand-<%= reviewId %>">
+          Read more
+        </button>
+      <% } %>
+    </div>
+
+    <!-- Comments -->
+    <div class="comments-section">
+      <div class="comments-header">
+        Comments (<%= comments.length %>)
       </div>
-      <div class="d-flex flex-column justify-content-between mt-2 mb-2">
-        <form action="/edit" method="post">
-          <button
-            class="btn btn-primary w-100 d-flex align-items-center justify-content-center"
-            name="edit"
-            value="<%= userInfo[i]["game_id"] %>"
-          >
-            <svg
-              class="edit"
-              width="800px"
-              height="800px"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <title />
 
-              <g id="Complete">
-                <g id="edit">
-                  <g>
-                    <path
-                      d="M20,16v4a2,2,0,0,1-2,2H4a2,2,0,0,1-2-2V6A2,2,0,0,1,4,4H8"
-                      fill="none"
-                      stroke="#f7f7f7"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                    />
+      <% if (comments.length > 0) { %>
+        <div class="comments-list">
+          <% comments.forEach(function(c) { %>
+            <div class="comment" id="comment-<%= c.id %>">
+              <div class="comment-meta">
+                <span class="comment-author"><%= c.author_email %></span>
+                <span class="comment-date"><%= new Date(c.created_at).toLocaleDateString() %></span>
+              </div>
+              <p class="comment-body" id="comment-body-<%= c.id %>"><%= c.content %></p>
 
-                    <polygon
-                      fill="none"
-                      points="12.5 15.8 22 6.2 17.8 2 8.3 11.5 8 16 12.5 15.8"
-                      stroke="#f7f7f7"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                    />
-                  </g>
-                </g>
-              </g>
-            </svg>
-          </button>
+              <% if (typeof userlog !== "undefined" && userlog && userlog.id === c.user_id) { %>
+                <div class="comment-actions">
+                  <button type="button" class="comment-action-btn" onclick="startEditComment(<%= c.id %>)">Edit</button>
+                  <form action="/delete-comment" method="post" style="display:inline;" onsubmit="return confirm('Delete this comment?');">
+                    <input type="hidden" name="comment_id" value="<%= c.id %>" />
+                    <button type="submit" class="comment-action-btn danger">Delete</button>
+                  </form>
+                </div>
+                <form action="/edit-comment" method="post" class="edit-comment-form" id="edit-form-<%= c.id %>" style="display:none;">
+                  <input type="hidden" name="comment_id" value="<%= c.id %>" />
+                  <textarea name="content" class="form-control comment-edit-input" rows="2" required><%= c.content %></textarea>
+                  <div class="edit-comment-btns">
+                    <button type="submit" class="nav-btn nav-btn-primary" style="padding: 0.3rem 0.75rem; font-size: 0.8rem;">Save</button>
+                    <button type="button" class="nav-btn" style="padding: 0.3rem 0.75rem; font-size: 0.8rem;" onclick="cancelEditComment(<%= c.id %>)">Cancel</button>
+                  </div>
+                </form>
+              <% } %>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <% if (typeof userlog !== "undefined" && userlog) { %>
+        <form action="/comment" method="post" class="add-comment-form">
+          <input type="hidden" name="review_id" value="<%= reviewId %>" />
+          <textarea name="content" class="form-control" rows="2" placeholder="Write a comment..." required></textarea>
+          <button type="submit" class="nav-btn nav-btn-primary" style="margin-top: 0.5rem; padding: 0.4rem 1rem; font-size: 0.85rem;">Post Comment</button>
         </form>
-        <form action="/delete" method="post">
-          <button class="btn btn-danger" name="delete" value="<%= userInfo[i]["game_id"] %>">
-<svg width="800px" height="800px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M10 12L14 16M14 12L10 16M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke="#f7f7f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-          </button>
-        </form>
-      </div>
+      <% } else { %>
+        <p class="login-to-comment"><a href="/login" style="color: var(--accent);">Log in</a> to leave a comment</p>
+      <% } %>
     </div>
   </div>
-</li>
+
+  <div class="game-actions">
+    <form action="/edit" method="post">
+      <button class="action-btn" name="edit" value="<%= userInfo[i].game_id %>" title="Edit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+      </button>
+    </form>
+    <form action="/delete" method="post" onsubmit="return confirm('Delete this review?');">
+      <button class="action-btn delete" name="delete" value="<%= userInfo[i].game_id %>" title="Delete">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          <line x1="10" y1="11" x2="10" y2="17"/>
+          <line x1="14" y1="11" x2="14" y2="17"/>
+        </svg>
+      </button>
+    </form>
+  </div>
+</div>

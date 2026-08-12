@@ -1,25 +1,14 @@
 //#region Imports
-// imports express for server routing
 import express from "express";
-// imports express sessions to allow users to remain signed in
 import session from "express-session";
-// allows for easily return form values
 import bodyParser from "body-parser";
-// allows easy api usage
 import axios from "axios";
-// allows postgresql usage
 import Pool from "pg-pool";
-// Hashes passwords
 import bcrypt from "bcrypt";
-// Stores sensitive vars like API keys in separate .env file
 import env from "dotenv";
-// Allows for easy user authentication
 import passport from "passport";
-// Allows sessions to be stored in postgresql db
 import PGStore from "connect-pg-simple";
-// Allows passport authentication with username and password
 import { Strategy } from "passport-local";
-// Allows passport authentication with Google (May want to change package to more popular one?)
 import GoogleStrategy from "passport-google-oauth2";
 //#endregion
 
@@ -32,9 +21,7 @@ const API_URL = `https://api.mobygames.com/v1/games?api_key=${API_KEY}`;
 const saltRounds = 10;
 //#endregion
 
-//#region Databse Connection Config
-//TODO: May need to be configured further
-// Using pg pool instead of pg client because it works well with sessions.
+//#region Database Connection Config
 const db = new Pool({
   user: process.env.PG_USER,
   host: process.env.PG_HOST,
@@ -52,13 +39,10 @@ app.use(express.static("public"));
 //#region Session creation
 app.use(
   session({
-    // Stores session in db. This is more secure than storing in the server. Now if server restarts sessions are still saved and prevents memory leaks
     store: new (PGStore(session))({
       pool: db,
-      //conString: `postgres://${process.env.PG_USER}:${process.env.PG_PASSWORD}@${process.env.PG_HOST}:${process.env.PG_PORT}/${process.env.PG_DATABASE}`,
       createTableIfMissing: true,
     }),
-    // Secret is used to hash the session to protect against session hijacking
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
@@ -70,7 +54,6 @@ app.use(
 //#endregion
 
 //#region Passport initialization middleware
-// passport middleware comes after session always
 app.use(passport.initialize());
 app.use(passport.session());
 //#endregion
@@ -81,44 +64,106 @@ let sortMethod = "released";
 //#endregion
 
 //#region get and display home page
-//TODO: ADD MobyGames credit on pages
 app.get("/", async (req, res) => {
+  // Whitelist allowed sort columns to avoid SQL injection
+  const allowedSorts = ["released", "rating", "title", "completed"];
+  if (!allowedSorts.includes(sortMethod)) {
+    sortMethod = "released";
+  }
+
+  // Join users so we can show who wrote each review
   let dbResult = await db.query(
-    `SELECT * FROM games ORDER BY ${sortMethod} DESC`
+    `SELECT games.*, users.email AS author_email
+     FROM games
+     LEFT JOIN users ON games.user_id = users.id
+     ORDER BY games.${sortMethod} DESC`
   );
   let userInfo = dbResult.rows;
-  let ids = "";
-  for (let i = 0; i < userInfo.length; i++) {
-    ids += "&id=" + userInfo[i]["game_id"];
+
+  // Fetch all comments for these reviews
+  let commentsByReview = {};
+  if (userInfo.length > 0) {
+    const reviewIds = userInfo.map((g) => g.id);
+    const commentsResult = await db.query(
+      `SELECT comments.*, users.email AS author_email
+       FROM comments
+       JOIN users ON comments.user_id = users.id
+       WHERE comments.review_id = ANY($1)
+       ORDER BY comments.created_at ASC`,
+      [reviewIds]
+    );
+    for (const c of commentsResult.rows) {
+      if (!commentsByReview[c.review_id]) commentsByReview[c.review_id] = [];
+      commentsByReview[c.review_id].push(c);
+    }
   }
-  const result = await axios.get(API_URL + ids);
-  console.log(result.data["games"][0]["sample_cover"]["image"]);
+
+  let gamesData = [];
+  if (userInfo.length > 0) {
+    let ids = "";
+    for (let i = 0; i < userInfo.length; i++) {
+      ids += "&id=" + userInfo[i]["game_id"];
+    }
+    try {
+      const result = await axios.get(API_URL + ids);
+      gamesData = result.data["games"] || [];
+      if (gamesData[0]?.sample_cover?.image) {
+        console.log(gamesData[0]["sample_cover"]["image"]);
+      }
+    } catch (err) {
+      console.error("MobyGames API error:", err.message);
+    }
+  }
+
   res.render("index.ejs", {
     userInfo: userInfo,
-    data: result.data["games"],
+    data: gamesData,
     userlog: req.user,
+    commentsByReview: commentsByReview,
   });
 });
 //#endregion
 
 //#region get and post for adding new game reviews
 app.get("/add", (req, res) => {
+  // Require login to add a review
+  if (!req.isAuthenticated()) {
+    return res.redirect("/login");
+  }
   res.render("add.ejs");
 });
 
 app.post("/add-game", async (req, res) => {
-  console.log(req.body);
-  const result = await axios.get(API_URL + `&id=${req.body["game_id"]}`);
-  console.log(result.data);
-  let title = result.data["games"][0]["title"];
-  let release = result.data["games"][0]["platforms"][0]["first_release_date"];
-  console.log(release);
-  await db.query(
-    `INSERT INTO games (game_id, title, completed, rating, notes, released) VALUES (${req.body["game_id"]}, '${title}', '${req.body["completed"]}', '${req.body["rating"]}', '${req.body["review"]}', '${release}')`
-  );
-  setTimeout(function () {
+  if (!req.isAuthenticated()) {
+    return res.redirect("/login");
+  }
+
+  try {
+    console.log(req.body);
+    const result = await axios.get(API_URL + `&id=${req.body["game_id"]}`);
+    console.log(result.data);
+    let title = result.data["games"][0]["title"];
+    let release =
+      result.data["games"][0]["platforms"]?.[0]?.["first_release_date"] || null;
+
+    await db.query(
+      `INSERT INTO games (game_id, title, completed, rating, notes, released, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        req.body["game_id"],
+        title,
+        req.body["completed"],
+        req.body["rating"],
+        req.body["review"],
+        release,
+        req.user.id,
+      ]
+    );
     res.redirect("/");
-  }, 1000);
+  } catch (err) {
+    console.error("Error adding game:", err.message);
+    res.redirect("/add");
+  }
 });
 //#endregion
 
@@ -133,7 +178,8 @@ app.post("/edit", async (req, res) => {
 
 app.post("/edit-game", async (req, res) => {
   await db.query(
-    `UPDATE games SET completed='${req.body["completed"]}', rating='${req.body["rating"]}', notes='${req.body["review"]}' WHERE game_id=${activeEdit}`
+    `UPDATE games SET completed=$1, rating=$2, notes=$3 WHERE game_id=$4`,
+    [req.body["completed"], req.body["rating"], req.body["review"], activeEdit]
   );
   res.redirect("/");
 });
@@ -142,7 +188,7 @@ app.post("/edit-game", async (req, res) => {
 //#region post for game review deletion
 app.post("/delete", async (req, res) => {
   console.log(req.body);
-  await db.query(`DELETE FROM games WHERE game_id=${req.body["delete"]}`);
+  await db.query(`DELETE FROM games WHERE game_id=$1`, [req.body["delete"]]);
   res.redirect("/");
 });
 //#endregion
@@ -155,84 +201,103 @@ app.post("/sort", async (req, res) => {
 });
 //#endregion
 
+//#region comments
+app.post("/comment", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const { review_id, content } = req.body;
+  if (!review_id || !content || !content.trim()) return res.redirect("/");
+  try {
+    await db.query(
+      `INSERT INTO comments (review_id, user_id, content) VALUES ($1, $2, $3)`,
+      [review_id, req.user.id, content.trim()]
+    );
+  } catch (err) {
+    console.error("Comment error:", err.message);
+  }
+  res.redirect("/");
+});
+
+app.post("/edit-comment", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const { comment_id, content } = req.body;
+  if (!comment_id || !content || !content.trim()) return res.redirect("/");
+  try {
+    // Only allow editing own comments
+    await db.query(
+      `UPDATE comments SET content = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND user_id = $3`,
+      [content.trim(), comment_id, req.user.id]
+    );
+  } catch (err) {
+    console.error("Edit comment error:", err.message);
+  }
+  res.redirect("/");
+});
+
+app.post("/delete-comment", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const { comment_id } = req.body;
+  if (!comment_id) return res.redirect("/");
+  try {
+    // Only allow deleting own comments
+    await db.query(
+      `DELETE FROM comments WHERE id = $1 AND user_id = $2`,
+      [comment_id, req.user.id]
+    );
+  } catch (err) {
+    console.error("Delete comment error:", err.message);
+  }
+  res.redirect("/");
+});
+//#endregion
+
 //#region gets for login and register
-// Get for login page
 app.get("/login", (req, res) => {
   res.render("login.ejs");
 });
 
-// Get for register page
 app.get("/register", (req, res) => {
   res.render("register.ejs");
 });
 //#endregion
 
 //#region post for login and register
-// Post for login page, submits credentials to local auth method, redirects depending on returned result
 app.post(
   "/login",
   passport.authenticate("local", {
-    successRedirect: "/secrets",
+    successRedirect: "/",
     failureRedirect: "/login",
   })
 );
 
-// Post for register page, hashes entered password and stores entered credentials in database, also logs user into new account and redirects to secrets
 app.post("/register", async (req, res) => {
   const email = req.body.username;
   const password = req.body.password;
-  //TODO: test hashing with salting duration to get it to 250ms
-  //Use bcrypt.hash to hash form password, also add additional saltrounds for safety. (Rule is 250 ms per password (about 6 rounds))
-  // returns hashed password if successful
+
   console.log(email, password);
   bcrypt.hash(password, saltRounds, async (err, hash) => {
     if (err) {
-      // unsuccessful hash
       console.log("error");
     } else {
-      // successful hash, store user in db
       console.log("attempting db user creation");
-      const result = await db.query(
-        "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *",
-        [email, hash]
-      );
-      const user = result.rows[0];
-      console.log(user);
-      req.login(user, (err) => {
-        console.log(err);
-        res.redirect("/secrets");
-      });
+      try {
+        const result = await db.query(
+          "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *",
+          [email, hash]
+        );
+        const user = result.rows[0];
+        console.log(user);
+        req.login(user, (err) => {
+          if (err) console.log(err);
+          res.redirect("/");
+        });
+      } catch (dbErr) {
+        console.error("Registration error:", dbErr.message);
+        res.redirect("/register");
+      }
     }
   });
 });
-//#endregion
-
-//#region get for secrets
-// Get for secrets, Checks if user is authenticated, when true render secrets.ejs else redirect to login
-app.get("/secrets", (req, res) => {
-  if (req.isAuthenticated()) {
-    res.render("secrets.ejs");
-  } else {
-    res.redirect("/login");
-  }
-});
-//#endregion
-
-//#region Routes for google auth
-app.get(
-  "/auth/google",
-  passport.authenticate("google", {
-    scope: ["profile", "email"],
-  })
-);
-
-app.get(
-  "/auth/google/profile",
-  passport.authenticate("google", {
-    successRedirect: "/secrets",
-    failureRedirect: "/login",
-  })
-);
 //#endregion
 
 //#region logout
@@ -245,78 +310,100 @@ app.get("/logout", (req, res) => {
 //#endregion
 
 //#region Passport Local Strategy
-//passport local auth strategy method, this is where login post sends to (passport.authenticate("local")) and returns back result
 passport.use(
   "local",
-  // passport automatically checks forms for names username and password (matching the first 2 params in verify). Therefore we don't need to rely on body parser
   new Strategy(async function verify(username, password, cb) {
-    // Check if email exists in db (all emails are unique and not null in db)
-    const result = await db.query("SELECT * FROM users WHERE email = $1", [
-      username,
-    ]);
-    // assign vars based on db result and compare the password using bcrypt
-    let newResult = result.rows[0];
-    let storedHashedPassword = newResult.password;
-    // bcrypt result returns true or false, or gives error
-    bcrypt.compare(password, storedHashedPassword, (err, result) => {
-      if (err) {
-        console.log(err);
-      } else {
-        if (result) {
-          // auth success
-          return cb(null, newResult);
-        } else {
-          // auth fail
-          return cb(null, false);
-        }
+    try {
+      const result = await db.query("SELECT * FROM users WHERE email = $1", [
+        username,
+      ]);
+      if (result.rows.length === 0) {
+        return cb(null, false);
       }
-    });
+      let newResult = result.rows[0];
+      let storedHashedPassword = newResult.password;
+      bcrypt.compare(password, storedHashedPassword, (err, result) => {
+        if (err) {
+          console.log(err);
+          return cb(err);
+        } else {
+          if (result) {
+            return cb(null, newResult);
+          } else {
+            return cb(null, false);
+          }
+        }
+      });
+    } catch (err) {
+      return cb(err);
+    }
   })
 );
 //#endregion
 
-//#region Passport Google Strategy
-passport.use(
-  "google",
-  new GoogleStrategy(
-    {
-      clientID: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: "http://localhost:3000/auth/google/profile",
-      userProfileURL: "https:www.googleapis.com/oauth2/v3/userinfo",
-    },
-    async (accessToken, refreshToken, profile, cb) => {
-      try {
-        console.log(profile);
-        const result = await db.query("SELECT * FROM users WHERE email = $1", [
-          profile.email,
-        ]);
-        if (result.rows.length === 0) {
-          const newUser = await db.query(
-            "INSERT INTO users (email, password) VALUES ($1, $2)",
-            [profile.email, "google"]
-          );
-          return cb(null, newUser.rows[0]);
-        } else {
-          return cb(null, result.rows[0]);
+//#region Passport Google Strategy (only if credentials exist)
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  passport.use(
+    "google",
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: "http://localhost:3000/auth/google/profile",
+        userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
+      },
+      async (accessToken, refreshToken, profile, cb) => {
+        try {
+          console.log(profile);
+          const result = await db.query("SELECT * FROM users WHERE email = $1", [
+            profile.email,
+          ]);
+          if (result.rows.length === 0) {
+            const newUser = await db.query(
+              "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *",
+              [profile.email, "google"]
+            );
+            return cb(null, newUser.rows[0]);
+          } else {
+            return cb(null, result.rows[0]);
+          }
+        } catch (err) {
+          return cb(err);
         }
-      } catch (err) {
-        return cb(err);
       }
-    }
-  )
-);
+    )
+  );
+
+  // Google auth routes
+  app.get(
+    "/auth/google",
+    passport.authenticate("google", {
+      scope: ["profile", "email"],
+    })
+  );
+
+  app.get(
+    "/auth/google/profile",
+    passport.authenticate("google", {
+      successRedirect: "/",
+      failureRedirect: "/login",
+    })
+  );
+}
 //#endregion
 
 //#region Serialize and Deserialize user
-//stores information about the user into the session
 passport.serializeUser((user, cb) => {
   cb(null, user.id);
 });
 
-//extracts information about the user from the session
-passport.deserializeUser((user, cb) => {
-  cb(null, user);
+passport.deserializeUser(async (id, cb) => {
+  try {
+    const result = await db.query("SELECT * FROM users WHERE id = $1", [id]);
+    cb(null, result.rows[0]);
+  } catch (err) {
+    cb(err);
+  }
 });
 //#endregion
 

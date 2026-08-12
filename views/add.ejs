@@ -3,87 +3,77 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Document</title>
+    <title>Add Review – Game Blog</title>
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
       rel="stylesheet"
       integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
       crossorigin="anonymous"
     />
+    <link rel="stylesheet" href="/styles/styles.css" />
   </head>
-  <body class="bg-dark-subtle">
-    <div class="">
-      <form action="/add-game" method="post">
-        <div class="container mt-5 p-0 shadow-lg bg-body-tertiary rounded">
-          <div
-            class="card d-flex flex-column align-items-center text-bg-secondary"
-          >
-            <div class="card-body col-10">
-              <div class="card text-bg-dark">
-                <div class="card-body p-5">
-                  <div>
-                    <label
-                      for="exampleFormControlInput1"
-                      name="id"
-                      class="form-label"
-                      >MobyGames Game ID</label
-                    >
-                    <input
-                      class="form-control form-control-lg"
-                      type="text"
-                      aria-label=".form-control-lg example"
-                      name="game_id"
-                      required
-                    />
-                    <div class="valid-feedback">Valid.</div>
-                    <div class="invalid-feedback">
-                      Please fill out this field.
-                    </div>
-                    <div class="valid-feedback">Looks good!</div>
-                  </div>
-                  <label for="exampleFormControlInput1" class="form-label mt-4"
-                    >Completed Date (yyyy-mm-dd)</label
-                  >
-                  <input
-                    class="form-control form-control-lg"
-                    type="text"
-                    aria-label=".form-control-lg example"
-                    name="completed"
-                    required
-                  />
-                  <label for="exampleFormControlInput1" class="form-label mt-4"
-                    >Personal Rating (0.0 - 5.0)</label
-                  >
-                  <input
-                    class="form-control form-control-lg"
-                    type="text"
-                    aria-label=".form-control-lg example"
-                    name="rating"
-                    required
-                  />
-                  <label
-                    for="exampleFormControlTextarea1"
-                    class="form-label mt-4"
-                    >Review</label
-                  >
-                  <textarea
-                    class="form-control"
-                    id="exampleFormControlTextarea1"
-                    rows="3"
-                    name="review"
-                    required
-                  ></textarea>
-                  <div class="d-flex justify-content-center">
-                    <button type="submit" class="btn btn-primary mt-5 col-3">
-                      Add Game
-                    </button>
-                  </div>
-                </div>
-              </div>
+  <body>
+    <nav class="navbar navbar-expand navbar-custom fixed-top">
+      <div class="container-fluid px-4">
+        <a class="navbar-brand" href="/">Video Game <span>Blog</span></a>
+        <a href="/" class="nav-btn">← Back</a>
+      </div>
+    </nav>
+
+    <div class="page-wrapper">
+      <div class="form-card">
+        <h1>Add a Review</h1>
+        <form action="/add-game" method="post">
+          <div class="mb-3">
+            <label class="form-label">MobyGames Game ID</label>
+            <input
+              class="form-control"
+              type="text"
+              name="game_id"
+              placeholder="e.g. 12345"
+              required
+            />
+            <div class="form-text text-secondary mt-1" style="font-size: 0.8rem;">
+              Find this number in the URL on mobygames.com
             </div>
           </div>
-        </div>
-      </form>
+
+          <div class="mb-3">
+            <label class="form-label">Completed Date</label>
+            <input
+              class="form-control"
+              type="text"
+              name="completed"
+              placeholder="yyyy-mm-dd"
+              required
+            />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Personal Rating (0.0 – 5.0)</label>
+            <input
+              class="form-control"
+              type="text"
+              name="rating"
+              placeholder="4.5"
+              required
+            />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Review</label>
+            <textarea
+              class="form-control"
+              name="review"
+              rows="5"
+              placeholder="What did you think of the game?"
+              required
+            ></textarea>
+          </div>
+
+          <button type="submit" class="btn-submit">Add Review</button>
+        </form>
+      </div>
     </div>
   </body>
 </html>
