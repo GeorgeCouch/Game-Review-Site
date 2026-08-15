@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Activity – GameCouch</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="/styles/styles.css" />
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
+<div class="page-wrapper">
+      <div class="page-header">
+        <div>
+          <h1>Activity</h1>
+          <p>Follows, list adds, achievements, and reviews from people you follow</p>
+        </div>
+      </div>
+
+      <% if (typeof error !== "undefined" && error) { %>
+        <p style="color: #ff8a8a;"><%= error %></p>
+      <% } %>
+
+      <% if (!activities || !activities.length) { %>
+        <div class="empty-state">
+          <h2>No activity yet</h2>
+          <p>When you or people you follow review games, unlock achievements, follow others, or add to lists, it shows up here.</p>
+        </div>
+      <% } else { %>
+        <div class="activity-list">
+          <% activities.forEach(function(a) {
+            const actorName = a.actor_display_name || a.actor_username || "Someone";
+            const actorHref = a.actor_username ? "/u/" + a.actor_username : "#";
+            const meta = a.meta || {};
+            const when = a.created_at
+              ? new Date(a.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+              : "";
+            let body = "";
+            let href = actorHref;
+
+            if (a.type === "review") {
+              body = "reviewed <strong>" + (meta.title || "a game") + "</strong>";
+              if (meta.rating != null) body += " · " + meta.rating + "/5";
+              href = meta.game_id ? "/game/" + meta.game_id : actorHref;
+            } else if (a.type === "follow") {
+              body = "followed <strong>" + (meta.target_display_name || meta.target_username || "someone") + "</strong>";
+              href = meta.target_username ? "/u/" + meta.target_username : actorHref;
+            } else if (a.type === "list_add") {
+              body = "added <strong>" + (meta.game_title || "a game") + "</strong> to list <strong>" + (meta.list_title || "") + "</strong>";
+              href = a.entity_id ? "/lists/" + a.entity_id : actorHref;
+            } else if (a.type === "achievement") {
+              body = "unlocked <strong>" + (meta.icon || "🏆") + " " + (meta.title || "an achievement") + "</strong>";
+              href = actorHref;
+            } else {
+              body = "did something";
+            }
+          %>
+            <div class="activity-item">
+              <a href="<%= actorHref %>" class="activity-avatar-link">
+                <% if (a.actor_avatar) { %>
+                  <img src="<%= a.actor_avatar %>" alt="" class="activity-avatar" />
+                <% } else { %>
+                  <div class="activity-avatar activity-avatar-fallback">
+                    <%= actorName.charAt(0).toUpperCase() %>
+                  </div>
+                <% } %>
+              </a>
+              <div class="activity-body">
+                <div class="activity-text">
+                  <a href="<%= actorHref %>" class="activity-actor"><%= actorName %></a>
+                  <span><%- body %></span>
+                </div>
+                <div class="activity-meta">
+                  <a href="<%= href %>" style="color: var(--accent);">View</a>
+                  · <%= when %>
+                </div>
+              </div>
+              <% if (meta.cover_url) { %>
+                <a href="<%= href %>" class="activity-cover-link">
+                  <img src="<%= meta.cover_url %>" alt="" class="activity-cover" />
+                </a>
+              <% } %>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+      <script src="/js/nav.js"></script>
+  </body>
+</html>

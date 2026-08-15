@@ -1,0 +1,141 @@
+<nav class="navbar navbar-custom fixed-top site-nav" aria-label="Main">
+  <div class="container-fluid px-3 px-md-4 site-nav-bar">
+    <a class="navbar-brand" href="/" aria-label="GameCouch home">
+      <img src="/favicon.svg" alt="" class="navbar-logo" width="28" height="28" />
+      <span class="brand-text">Game<span class="brand-accent">Couch</span></span>
+    </a>
+
+    <!-- Desktop links -->
+    <div class="nav-desktop" role="navigation" aria-label="Primary">
+      <a href="/" class="nav-btn">Feed</a>
+      <a href="/activity" class="nav-btn">Activity</a>
+      <a href="/explore" class="nav-btn">Explore</a>
+      <a href="/search" class="nav-btn">Search</a>
+      <a href="/leaderboards" class="nav-btn">Leaderboards</a>
+
+      <% if (typeof showSort !== "undefined" && showSort) { %>
+        <div class="dropdown">
+          <button
+            class="nav-btn dropdown-toggle"
+            type="button"
+            data-bs-toggle="dropdown"
+            aria-expanded="false"
+            aria-haspopup="true"
+            aria-label="Sort reviews"
+          >
+            Sort
+          </button>
+          <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end" role="menu" aria-label="Sort options">
+            <form action="/sort" method="post">
+              <li role="none"><button class="dropdown-item" type="submit" name="sort" value="rating" role="menuitem">Rating</button></li>
+              <li role="none"><button class="dropdown-item" type="submit" name="sort" value="completed" role="menuitem">Completed</button></li>
+              <li role="none"><button class="dropdown-item" type="submit" name="sort" value="released" role="menuitem">Released</button></li>
+            </form>
+          </ul>
+        </div>
+      <% } %>
+
+      <% if (typeof userlog !== "undefined" && userlog) { %>
+        <a href="/log" class="nav-btn nav-btn-primary">+ Log</a>
+        <a href="/add" class="nav-btn">Review</a>
+        <a href="/notifications" class="nav-btn notif-nav" aria-label="Notifications<%= typeof unreadNotifications !== 'undefined' && unreadNotifications > 0 ? ' (' + unreadNotifications + ' unread)' : '' %>">
+          Alerts
+          <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
+            <span class="notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
+          <% } %>
+        </a>
+        <% if (userlog.username) { %>
+          <a href="/u/<%= userlog.username %>" class="nav-btn">Profile</a>
+        <% } else { %>
+          <a href="/profile/edit" class="nav-btn">Set Username</a>
+        <% } %>
+        <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
+          <a href="/admin" class="nav-btn">Admin</a>
+        <% } %>
+        <a href="/logout" class="nav-btn">Logout</a>
+      <% } else { %>
+        <a href="/login" class="nav-btn nav-btn-primary">Login</a>
+      <% } %>
+    </div>
+
+    <!-- Mobile: primary action + menu button -->
+    <div class="nav-mobile-tools">
+      <% if (typeof userlog !== "undefined" && userlog) { %>
+        <a href="/log" class="nav-btn nav-btn-primary nav-mobile-log">+ Log</a>
+        <a
+          href="/notifications"
+          class="nav-btn notif-nav nav-mobile-alerts"
+          aria-label="Notifications<%= typeof unreadNotifications !== 'undefined' && unreadNotifications > 0 ? ' (' + unreadNotifications + ' unread)' : '' %>"
+        >
+          <span aria-hidden="true">🔔</span>
+          <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
+            <span class="notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
+          <% } %>
+        </a>
+      <% } else { %>
+        <a href="/login" class="nav-btn nav-btn-primary">Login</a>
+      <% } %>
+      <button
+        type="button"
+        class="nav-burger"
+        id="nav-burger"
+        aria-label="Open menu"
+        aria-expanded="false"
+        aria-controls="nav-drawer"
+        aria-haspopup="true"
+      >
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile drawer -->
+  <div
+    class="nav-drawer"
+    id="nav-drawer"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Site menu"
+    hidden
+  >
+    <div class="nav-drawer-inner" role="navigation" aria-label="Mobile">
+      <a href="/" class="nav-drawer-link">Feed</a>
+      <a href="/activity" class="nav-drawer-link">Activity</a>
+      <a href="/explore" class="nav-drawer-link">Explore</a>
+      <a href="/search" class="nav-drawer-link">Search</a>
+      <a href="/leaderboards" class="nav-drawer-link">Leaderboards</a>
+      <% if (typeof userlog !== "undefined" && userlog) { %>
+        <a href="/log" class="nav-drawer-link">Quick Log</a>
+        <a href="/add" class="nav-drawer-link">Write Review</a>
+        <a href="/notifications" class="nav-drawer-link">
+          Notifications
+          <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
+            <span class="notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
+            <span class="visually-hidden"><%= unreadNotifications %> unread</span>
+          <% } %>
+        </a>
+        <% if (userlog.username) { %>
+          <a href="/u/<%= userlog.username %>" class="nav-drawer-link">Profile</a>
+        <% } else { %>
+          <a href="/profile/edit" class="nav-drawer-link">Set Username</a>
+        <% } %>
+        <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
+          <a href="/admin" class="nav-drawer-link">Admin</a>
+        <% } %>
+        <a href="/logout" class="nav-drawer-link">Logout</a>
+      <% } else { %>
+        <a href="/login" class="nav-drawer-link">Login</a>
+        <a href="/register" class="nav-drawer-link">Register</a>
+      <% } %>
+    </div>
+  </div>
+</nav>
+<div
+  class="nav-backdrop"
+  id="nav-backdrop"
+  hidden
+  tabindex="-1"
+  aria-hidden="true"
+></div>

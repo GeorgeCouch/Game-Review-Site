@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= listTitle %> – @<%= profile.username %> – GameCouch</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="/styles/styles.css" />
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
+<div class="page-wrapper">
+      <div class="page-header">
+        <div>
+          <h1><%= listTitle %></h1>
+          <p>
+            <a href="/u/<%= profile.username %>" style="color: var(--accent);">@<%= profile.username %></a>
+            · <%= users.length %> user<%= users.length === 1 ? "" : "s" %>
+          </p>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="follow-tabs">
+        <a
+          href="/u/<%= profile.username %>/followers"
+          class="follow-tab<%= listType === 'followers' ? ' active' : '' %>"
+        >Followers</a>
+        <a
+          href="/u/<%= profile.username %>/following"
+          class="follow-tab<%= listType === 'following' ? ' active' : '' %>"
+        >Following</a>
+      </div>
+
+      <% if (!users || users.length === 0) { %>
+        <div class="empty-state">
+          <h2>No one here yet</h2>
+          <p>
+            <% if (listType === 'followers') { %>
+              Nobody is following <%= profile.display_name || profile.username %> yet.
+            <% } else { %>
+              <%= profile.display_name || profile.username %> isn’t following anyone yet.
+            <% } %>
+          </p>
+        </div>
+      <% } else { %>
+        <div class="user-list">
+          <% users.forEach(function(u) { %>
+            <div class="user-list-item">
+              <a href="/u/<%= u.username %>" class="user-list-main">
+                <% if (u.avatar_url) { %>
+                  <img class="user-list-avatar" src="<%= u.avatar_url %>" alt="" />
+                <% } else { %>
+                  <div class="user-list-avatar user-list-avatar-placeholder">
+                    <%= (u.display_name || u.username || "?").charAt(0).toUpperCase() %>
+                  </div>
+                <% } %>
+                <div>
+                  <div class="user-list-name"><%= u.display_name || u.username %></div>
+                  <div class="user-list-handle">@<%= u.username %></div>
+                  <% if (u.bio) { %>
+                    <div class="user-list-bio"><%= u.bio.length > 100 ? u.bio.slice(0, 100) + "…" : u.bio %></div>
+                  <% } %>
+                </div>
+              </a>
+
+              <% if (typeof userlog !== "undefined" && userlog && userlog.id !== u.id) { %>
+                <% if (u.is_followed_by_me) { %>
+                  <form action="/unfollow/<%= u.username %>" method="POST">
+                    <button type="submit" class="nav-btn">Unfollow</button>
+                  </form>
+                <% } else { %>
+                  <form action="/follow/<%= u.username %>" method="POST">
+                    <button type="submit" class="nav-btn nav-btn-primary">Follow</button>
+                  </form>
+                <% } %>
+              <% } %>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+      <script src="/js/nav.js"></script>
+  </body>
+</html>

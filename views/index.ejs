@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Game Blog</title>
+    <title>GameCouch</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
       rel="stylesheet"
@@ -14,62 +15,19 @@
   </head>
   <body>
     <!-- Navbar -->
-    <nav class="navbar navbar-expand navbar-custom fixed-top">
-      <div class="container-fluid px-4">
-        <a class="navbar-brand" href="/">Video Game <span>Blog</span></a>
-
-        <div class="d-flex align-items-center gap-2">
-          <!-- Sort dropdown -->
-          <div class="dropdown">
-            <button
-              class="nav-btn dropdown-toggle"
-              type="button"
-              data-bs-toggle="dropdown"
-              aria-expanded="false"
-            >
-              Sort
-            </button>
-            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
-              <form action="/sort" method="post">
-                <li>
-                  <button class="dropdown-item" type="submit" name="sort" value="rating">
-                    Rating
-                  </button>
-                </li>
-                <li>
-                  <button class="dropdown-item" type="submit" name="sort" value="completed">
-                    Completed
-                  </button>
-                </li>
-                <li>
-                  <button class="dropdown-item" type="submit" name="sort" value="released">
-                    Released
-                  </button>
-                </li>
-              </form>
-            </ul>
-          </div>
-
-          <a href="/add" class="nav-btn nav-btn-primary">+ Add Review</a>
-
-          <% if (typeof userlog !== "undefined" && userlog) { %>
-            <a href="/logout" class="nav-btn">Logout</a>
-          <% } else { %>
-            <a href="/login" class="nav-btn">Login</a>
-          <% } %>
-        </div>
-      </div>
-    </nav>
-
-    <div class="page-wrapper">
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: true }) %>
+<div class="page-wrapper">
       <div class="page-header">
         <div>
-          <h1>My Reviews</h1>
+          <h1><%= (typeof feedMode !== "undefined" && feedMode === "feed") ? "Your Feed" : "Explore" %></h1>
           <p>
-            <% if (userInfo && userInfo.length) { %>
-              <%= userInfo.length %> game<%= userInfo.length === 1 ? "" : "s" %> reviewed
+            <% if (typeof feedMode !== "undefined" && feedMode === "feed") { %>
+              Reviews from you and people you follow
             <% } else { %>
-              No reviews yet
+              Discover reviews from the community
+            <% } %>
+            <% if (userInfo && userInfo.length) { %>
+              · <%= userInfo.length %> review<%= userInfo.length === 1 ? "" : "s" %>
             <% } %>
           </p>
         </div>
@@ -77,9 +35,18 @@
 
       <% if (!userInfo || userInfo.length === 0) { %>
         <div class="empty-state">
-          <h2>No reviews yet</h2>
-          <p>Add your first game review to get started.</p>
-          <a href="/add" class="nav-btn nav-btn-primary">+ Add Review</a>
+          <% if (typeof feedMode !== "undefined" && feedMode === "feed") { %>
+            <h2>Your feed is empty</h2>
+            <p>Follow some people or add your first review to get started.</p>
+            <div style="display:flex; gap:0.75rem; justify-content:center; flex-wrap:wrap;">
+              <a href="/explore" class="nav-btn">Explore reviews</a>
+              <a href="/add" class="nav-btn nav-btn-primary">+ Add Review</a>
+            </div>
+          <% } else { %>
+            <h2>No reviews yet</h2>
+            <p>Be the first to add a game review.</p>
+            <a href="/add" class="nav-btn nav-btn-primary">+ Add Review</a>
+          <% } %>
         </div>
       <% } else { %>
         <div class="game-list">
@@ -122,5 +89,8 @@
         if (actions) actions.style.display = "flex";
       }
     </script>
+      <script src="/js/likes.js"></script>
+    <script src="/js/comments.js"></script>
+      <script src="/js/nav.js"></script>
   </body>
 </html>

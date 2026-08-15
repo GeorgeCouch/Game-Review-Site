@@ -1,20 +1,6 @@
 <%
-  // Find matching API data for this game
-  let coverUrl = null;
+  let coverUrl = userInfo[i].cover_url || null;
   let releaseDate = userInfo[i].released || "Unknown";
-  if (typeof data !== "undefined" && data && data.length) {
-    for (let j = 0; j < data.length; j++) {
-      if (data[j].game_id == userInfo[i].game_id) {
-        if (data[j].sample_cover && data[j].sample_cover.image) {
-          coverUrl = data[j].sample_cover.image;
-        }
-        if (data[j].platforms && data[j].platforms[0] && data[j].platforms[0].first_release_date) {
-          releaseDate = data[j].platforms[0].first_release_date;
-        }
-        break;
-      }
-    }
-  }
 
   // Stars
   const rating = parseFloat(userInfo[i].rating) || 0;
@@ -25,6 +11,9 @@
   const comments = (typeof commentsByReview !== "undefined" && commentsByReview[reviewId]) ? commentsByReview[reviewId] : [];
   const notes = userInfo[i].notes || "";
   const isLong = notes.length > 180;
+  const likeCount = (typeof likeCountByReview !== "undefined" && likeCountByReview[reviewId]) ? likeCountByReview[reviewId] : 0;
+  const isLiked = (typeof likedByUser !== "undefined" && likedByUser && likedByUser.has && likedByUser.has(reviewId));
+  const hasSpoilers = !!userInfo[i].has_spoilers;
 %>
 
 <div class="game-card" id="review-<%= reviewId %>">
@@ -38,7 +27,9 @@
     <div class="game-meta">
       <span>Released: <%= releaseDate %></span>
       <span>Completed: <%= userInfo[i].completed || "—" %></span>
-      <% if (userInfo[i].author_email) { %>
+      <% if (userInfo[i].author_username) { %>
+        <span>By: <a href="/u/<%= userInfo[i].author_username %>" style="color: var(--accent);"><%= userInfo[i].author_display_name || userInfo[i].author_username %></a></span>
+      <% } else if (userInfo[i].author_email) { %>
         <span>By: <%= userInfo[i].author_email %></span>
       <% } %>
     </div>
@@ -56,59 +47,87 @@
       <span style="margin-left: 6px; color: var(--text-muted); font-size: 0.85rem;"><%= rating.toFixed(1) %></span>
     </div>
 
-    <h2 class="game-title"><%= userInfo[i].title %></h2>
+    <h2 class="game-title"><a href="/game/<%= userInfo[i].game_id %>" style="color: inherit;"><%= userInfo[i].title %></a></h2>
 
+    <% if (notes && notes.trim()) { %>
     <div class="game-notes-wrap">
-      <p class="game-notes<%= isLong ? ' clamped' : '' %>" id="notes-<%= reviewId %>"><%= notes %></p>
-      <% if (isLong) { %>
-        <button type="button" class="expand-btn" onclick="toggleNotes(<%= reviewId %>)" id="expand-<%= reviewId %>">
-          Read more
-        </button>
+      <% if (hasSpoilers) { %>
+        <div class="spoiler-block" data-spoiler>
+          <div class="spoiler-badge">Spoilers</div>
+          <div class="spoiler-content is-hidden">
+            <p class="game-notes<%= isLong ? ' clamped' : '' %>" id="notes-<%= reviewId %>"><%= notes %></p>
+            <% if (isLong) { %>
+              <button type="button" class="expand-btn" onclick="toggleNotes(<%= reviewId %>)" id="expand-<%= reviewId %>">Read more</button>
+            <% } %>
+          </div>
+          <button type="button" class="spoiler-reveal nav-btn">Show spoilers</button>
+        </div>
+      <% } else { %>
+        <p class="game-notes<%= isLong ? ' clamped' : '' %>" id="notes-<%= reviewId %>"><%= notes %></p>
+        <% if (isLong) { %>
+          <button type="button" class="expand-btn" onclick="toggleNotes(<%= reviewId %>)" id="expand-<%= reviewId %>">Read more</button>
+        <% } %>
       <% } %>
     </div>
+    <% } else { %>
+    <p class="game-notes" style="color: var(--text-muted); font-style: italic; font-size: 0.9rem;">Logged without a written review</p>
+    <% } %>
 
     <!-- Comments -->
-    <div class="comments-section">
+    <div class="comments-section" data-review-id="<%= reviewId %>">
       <div class="comments-header">
-        Comments (<%= comments.length %>)
+        Comments (<span class="comment-count"><%= comments.length %></span>)
       </div>
 
-      <% if (comments.length > 0) { %>
-        <div class="comments-list">
-          <% comments.forEach(function(c) { %>
-            <div class="comment" id="comment-<%= c.id %>">
-              <div class="comment-meta">
-                <span class="comment-author"><%= c.author_email %></span>
-                <span class="comment-date"><%= new Date(c.created_at).toLocaleDateString() %></span>
-              </div>
-              <p class="comment-body" id="comment-body-<%= c.id %>"><%= c.content %></p>
-
-              <% if (typeof userlog !== "undefined" && userlog && userlog.id === c.user_id) { %>
-                <div class="comment-actions">
-                  <button type="button" class="comment-action-btn" onclick="startEditComment(<%= c.id %>)">Edit</button>
-                  <form action="/delete-comment" method="post" style="display:inline;" onsubmit="return confirm('Delete this comment?');">
-                    <input type="hidden" name="comment_id" value="<%= c.id %>" />
-                    <button type="submit" class="comment-action-btn danger">Delete</button>
-                  </form>
-                </div>
-                <form action="/edit-comment" method="post" class="edit-comment-form" id="edit-form-<%= c.id %>" style="display:none;">
-                  <input type="hidden" name="comment_id" value="<%= c.id %>" />
-                  <textarea name="content" class="form-control comment-edit-input" rows="2" required><%= c.content %></textarea>
-                  <div class="edit-comment-btns">
-                    <button type="submit" class="nav-btn nav-btn-primary" style="padding: 0.3rem 0.75rem; font-size: 0.8rem;">Save</button>
-                    <button type="button" class="nav-btn" style="padding: 0.3rem 0.75rem; font-size: 0.8rem;" onclick="cancelEditComment(<%= c.id %>)">Cancel</button>
-                  </div>
-                </form>
-              <% } %>
+      <div class="comments-list">
+        <% comments.forEach(function(c) { %>
+          <div class="comment" id="comment-<%= c.id %>" data-comment-id="<%= c.id %>">
+            <div class="comment-meta">
+              <span class="comment-author">
+                <% if (c.author_username) { %>
+                  <a href="/u/<%= c.author_username %>" style="color: var(--accent);"><%= c.author_display_name || c.author_username %></a>
+                <% } else { %>
+                  <%= c.author_email || "User" %>
+                <% } %>
+              </span>
+              <span class="comment-date"><%= new Date(c.created_at).toLocaleDateString() %></span>
             </div>
-          <% }) %>
-        </div>
-      <% } %>
+            <% if (c.has_spoilers) { %>
+              <div class="spoiler-block spoiler-block-sm" data-spoiler>
+                <div class="spoiler-badge">Spoilers</div>
+                <p class="comment-body spoiler-content is-hidden" id="comment-body-<%= c.id %>"><%= c.content %></p>
+                <button type="button" class="spoiler-reveal nav-btn">Show</button>
+              </div>
+            <% } else { %>
+              <p class="comment-body" id="comment-body-<%= c.id %>"><%= c.content %></p>
+            <% } %>
+
+            <% if (typeof userlog !== "undefined" && userlog && userlog.id === c.user_id) { %>
+              <div class="comment-actions">
+                <button type="button" class="comment-action-btn js-edit-comment">Edit</button>
+                <button type="button" class="comment-action-btn danger js-delete-comment">Delete</button>
+              </div>
+              <form class="edit-comment-form" id="edit-form-<%= c.id %>" style="display:none;">
+                <input type="hidden" name="comment_id" value="<%= c.id %>" />
+                <textarea name="content" class="form-control comment-edit-input" rows="2" required><%= c.content %></textarea>
+                <div class="edit-comment-btns">
+                  <button type="submit" class="nav-btn nav-btn-primary" style="padding: 0.3rem 0.75rem; font-size: 0.8rem;">Save</button>
+                  <button type="button" class="nav-btn js-cancel-edit" style="padding: 0.3rem 0.75rem; font-size: 0.8rem;">Cancel</button>
+                </div>
+              </form>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
 
       <% if (typeof userlog !== "undefined" && userlog) { %>
-        <form action="/comment" method="post" class="add-comment-form">
+        <form class="add-comment-form" data-review-id="<%= reviewId %>">
           <input type="hidden" name="review_id" value="<%= reviewId %>" />
           <textarea name="content" class="form-control" rows="2" placeholder="Write a comment..." required></textarea>
+          <label class="spoiler-check">
+            <input type="checkbox" name="has_spoilers" value="1" />
+            Spoilers
+          </label>
           <button type="submit" class="nav-btn nav-btn-primary" style="margin-top: 0.5rem; padding: 0.4rem 1rem; font-size: 0.85rem;">Post Comment</button>
         </form>
       <% } else { %>
@@ -118,23 +137,55 @@
   </div>
 
   <div class="game-actions">
-    <form action="/edit" method="post">
-      <button class="action-btn" name="edit" value="<%= userInfo[i].game_id %>" title="Edit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    <% if (typeof userlog !== "undefined" && userlog) { %>
+      <button
+        type="button"
+        class="action-btn like-btn<%= isLiked ? ' liked' : '' %>"
+        data-review-id="<%= reviewId %>"
+        data-liked="<%= isLiked ? '1' : '0' %>"
+        title="<%= isLiked ? 'Unlike' : 'Like' %>"
+      >
+        <svg viewBox="0 0 24 24" fill="<%= isLiked ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="2">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
         </svg>
       </button>
-    </form>
-    <form action="/delete" method="post" onsubmit="return confirm('Delete this review?');">
-      <button class="action-btn delete" name="delete" value="<%= userInfo[i].game_id %>" title="Delete">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          <line x1="10" y1="11" x2="10" y2="17"/>
-          <line x1="14" y1="11" x2="14" y2="17"/>
-        </svg>
-      </button>
-    </form>
+    <% } %>
+    <span class="like-count" data-review-id="<%= reviewId %>"><%= likeCount %></span>
+    <a href="/review/<%= reviewId %>" class="action-btn" title="Open / share review" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+      </svg>
+    </a>
+
+    <% if (typeof userlog !== "undefined" && userlog && userlog.id !== userInfo[i].user_id) { %>
+      <form action="/report" method="post" onsubmit="return confirm('Report this review?');" style="display:inline;">
+        <input type="hidden" name="target_type" value="review" />
+        <input type="hidden" name="target_id" value="<%= reviewId %>" />
+        <input type="hidden" name="reason" value="Reported review" />
+        <button type="submit" class="action-btn" title="Report review" style="font-size: 0.7rem; padding: 0.35rem 0.45rem;">⚑</button>
+      </form>
+    <% } %>
+
+    <% if (typeof userlog !== "undefined" && userlog && userlog.id === userInfo[i].user_id) { %>
+      <form action="/edit" method="post">
+        <button class="action-btn" name="edit" value="<%= userInfo[i].game_id %>" title="Edit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+      </form>
+      <form action="/delete" method="post" onsubmit="return confirm('Delete this review?');">
+        <button class="action-btn delete" name="delete" value="<%= userInfo[i].game_id %>" title="Delete">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            <line x1="10" y1="11" x2="10" y2="17"/>
+            <line x1="14" y1="11" x2="14" y2="17"/>
+          </svg>
+        </button>
+      </form>
+    <% } %>
   </div>
 </div>

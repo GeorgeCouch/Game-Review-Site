@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= profile.display_name || profile.username %> – GameCouch</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="/styles/styles.css" />
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
+<div class="page-wrapper">
+      <!-- Profile header -->
+      <div class="profile-header">
+        <div class="profile-avatar">
+          <% if (profile.avatar_url) { %>
+            <img src="<%= profile.avatar_url %>" alt="<%= profile.display_name || profile.username %>" />
+          <% } else { %>
+            <div class="avatar-placeholder">
+              <%= (profile.display_name || profile.username || "?").charAt(0).toUpperCase() %>
+            </div>
+          <% } %>
+        </div>
+
+        <div class="profile-info">
+          <div class="profile-name-row">
+            <h1 class="profile-name"><%= profile.display_name || profile.username %></h1>
+            <% if (typeof xpInfo !== "undefined" && xpInfo) { %>
+              <span class="level-badge" title="<%= xpInfo.totalXp %> XP">Lv <%= xpInfo.level %></span>
+            <% } %>
+            <% if (typeof userlog !== "undefined" && userlog && userlog.id === profile.id) { %>
+              <span class="you-badge">You</span>
+            <% } %>
+          </div>
+          <p class="profile-username">@<%= profile.username %></p>
+          <% if (typeof xpInfo !== "undefined" && xpInfo && xpInfo.title) { %>
+            <p class="profile-title"><%= xpInfo.title %></p>
+          <% } else if (profile.profile_title) { %>
+            <p class="profile-title"><%= profile.profile_title %></p>
+          <% } %>
+
+          <% if (profile.twitch_username || profile.youtube_url || profile.x_username) { %>
+            <div class="profile-socials">
+              <% if (profile.twitch_username) { %>
+                <a href="https://twitch.tv/<%= profile.twitch_username %>" target="_blank" rel="noopener" class="social-link social-twitch" title="Twitch">
+                  Twitch
+                </a>
+              <% } %>
+              <% if (profile.youtube_url) { %>
+                <a href="<%= profile.youtube_url %>" target="_blank" rel="noopener" class="social-link social-youtube" title="YouTube">
+                  YouTube
+                </a>
+              <% } %>
+              <% if (profile.x_username) { %>
+                <a href="https://x.com/<%= profile.x_username %>" target="_blank" rel="noopener" class="social-link social-x" title="X">
+                  X
+                </a>
+              <% } %>
+            </div>
+          <% } %>
+
+          <% if (profile.bio && profile.bio.trim()) { %>
+            <p class="profile-bio"><%= profile.bio %></p>
+          <% } else if (typeof userlog !== "undefined" && userlog && userlog.id === profile.id) { %>
+            <p class="profile-bio profile-bio-empty">
+              No bio yet · <a href="/profile/edit" style="color: var(--accent);">Add one</a>
+            </p>
+          <% } %>
+
+          <div class="profile-stats">
+            <div class="stat">
+              <span class="stat-num"><%= reviewCount || 0 %></span>
+              <span class="stat-label">Reviews</span>
+            </div>
+            <a href="/u/<%= profile.username %>/followers" class="stat stat-link">
+              <span class="stat-num"><%= followerCount || 0 %></span>
+              <span class="stat-label">Followers</span>
+            </a>
+            <a href="/u/<%= profile.username %>/following" class="stat stat-link">
+              <span class="stat-num"><%= followingCount || 0 %></span>
+              <span class="stat-label">Following</span>
+            </a>
+          </div>
+
+          <% if (typeof xpInfo !== "undefined" && xpInfo) { %>
+            <div class="xp-block">
+              <div class="xp-labels">
+                <span>Level <%= xpInfo.level %></span>
+                <span><%= xpInfo.xpIntoLevel %> / <%= xpInfo.xpForNext %> XP</span>
+              </div>
+              <div class="xp-bar">
+                <div class="xp-bar-fill" style="width: <%= xpInfo.progressPct %>%;"></div>
+              </div>
+              <div class="xp-total">
+                <%= xpInfo.totalXp %> total XP
+                <% if (typeof userlog !== "undefined" && userlog && userlog.id === profile.id) { %>
+                  · Today <%= xpInfo.dailyXp || 0 %>/<%= xpInfo.dailyCap || 400 %>
+                  <% if ((xpInfo.dailyRemaining || 0) <= 0) { %>
+                    <span class="xp-capped"> · daily cap reached</span>
+                  <% } %>
+                <% } %>
+              </div>
+              <% if (xpInfo.nextTitles && xpInfo.nextTitles.length) { %>
+                <div class="xp-next-rewards">
+                  Next titles:
+                  <% xpInfo.nextTitles.forEach(function(t, idx) { %>
+                    <span class="xp-reward-chip">Lv <%= t.level %> · <%= t.title %></span>
+                  <% }) %>
+                </div>
+              <% } %>
+            </div>
+          <% } %>
+
+          <p class="profile-joined">
+            Joined <%= profile.created_at
+              ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+              : '—' %>
+            · <a href="/u/<%= profile.username %>/diary" style="color: var(--accent);">Diary</a>
+            · <a href="/u/<%= profile.username %>/year/<%= new Date().getFullYear() %>" style="color: var(--accent);"><%= new Date().getFullYear() %> Review</a>
+          </p>
+
+          <div class="profile-actions">
+            <% if (typeof userlog !== "undefined" && userlog && userlog.id === profile.id) { %>
+              <a href="/profile/edit" class="nav-btn nav-btn-primary">Edit Profile</a>
+              <a href="/u/<%= profile.username %>/diary" class="nav-btn">Diary</a>
+              <a href="/add" class="nav-btn">+ Add Review</a>
+              <a href="/lists/new" class="nav-btn">+ New List</a>
+            <% } else if (typeof userlog !== "undefined" && userlog) { %>
+              <% if (typeof theyBlockedMe !== "undefined" && theyBlockedMe) { %>
+                <span class="nav-btn" style="opacity:0.7; cursor:default;">Unavailable</span>
+              <% } else if (typeof iBlockedThem !== "undefined" && iBlockedThem) { %>
+                <form action="/unblock/<%= profile.username %>" method="POST" style="display:inline;" class="block-form">
+                  <button type="submit" class="nav-btn">Unblock</button>
+                </form>
+              <% } else { %>
+                <button
+                  type="button"
+                  class="nav-btn follow-btn<%= isFollowing ? '' : ' nav-btn-primary' %>"
+                  data-username="<%= profile.username %>"
+                  data-following="<%= isFollowing ? '1' : '0' %>"
+                ><%= isFollowing ? 'Unfollow' : 'Follow' %></button>
+                <form action="/block/<%= profile.username %>" method="POST" style="display:inline;" class="block-form" onsubmit="return confirm('Block @<%= profile.username %>? You will unfollow each other.');">
+                  <button type="submit" class="nav-btn">Block</button>
+                </form>
+                <form action="/report" method="POST" onsubmit="return confirm('Report this user?');" style="display:inline;">
+                  <input type="hidden" name="target_type" value="user" />
+                  <input type="hidden" name="target_id" value="<%= profile.id %>" />
+                  <input type="hidden" name="reason" value="Reported user profile" />
+                  <button type="submit" class="nav-btn">Report</button>
+                </form>
+              <% } %>
+            <% } else { %>
+              <a href="/login" class="nav-btn nav-btn-primary">Log in to Follow</a>
+            <% } %>
+          </div>
+        </div>
+      </div>
+
+      <% if (typeof theyBlockedMe !== "undefined" && theyBlockedMe) { %>
+        <div class="empty-state" style="margin-top: 1.5rem;">
+          <h2>This profile is unavailable</h2>
+          <p>You can’t view this user’s activity.</p>
+        </div>
+      <% } else if (typeof iBlockedThem !== "undefined" && iBlockedThem) { %>
+        <div class="empty-state" style="margin-top: 1.5rem;">
+          <h2>You blocked this user</h2>
+          <p>Unblock to follow them again or see them in your feed.</p>
+        </div>
+      <% } %>
+      <!-- Followed by / mutual -->
+      <% 
+        const fb = typeof followedBy !== "undefined" && followedBy ? followedBy : [];
+        const mutual = typeof mutualFollowing !== "undefined" && mutualFollowing ? mutualFollowing : [];
+      %>
+      <% if (fb.length || mutual.length) { %>
+        <div class="social-context">
+          <% if (fb.length) { %>
+            <div class="social-context-row">
+              <div class="social-context-label">Followed by</div>
+              <div class="social-context-people">
+                <% fb.forEach(function(p) { %>
+                  <a href="/u/<%= p.username %>" class="social-chip" title="@<%= p.username %>">
+                    <% if (p.avatar_url) { %>
+                      <img src="<%= p.avatar_url %>" alt="" />
+                    <% } else { %>
+                      <span class="social-chip-fallback"><%= (p.display_name || p.username || "?").charAt(0).toUpperCase() %></span>
+                    <% } %>
+                    <span><%= p.display_name || p.username %></span>
+                  </a>
+                <% }) %>
+              </div>
+              <p class="social-context-summary">
+                Followed by
+                <strong><%= fb.slice(0, 2).map(function(p){ return p.display_name || p.username; }).join(", ") %></strong>
+                <% if (fb.length > 2) { %>
+                  and <%= fb.length - 2 %> other<%= fb.length - 2 === 1 ? "" : "s" %> you follow
+                <% } else if (fb.length === 1) { %>
+                  (someone you follow)
+                <% } else { %>
+                  (people you follow)
+                <% } %>
+              </p>
+            </div>
+          <% } %>
+
+          <% if (mutual.length) { %>
+            <div class="social-context-row">
+              <div class="social-context-label">Mutual following</div>
+              <div class="social-context-people">
+                <% mutual.forEach(function(p) { %>
+                  <a href="/u/<%= p.username %>" class="social-chip" title="@<%= p.username %>">
+                    <% if (p.avatar_url) { %>
+                      <img src="<%= p.avatar_url %>" alt="" />
+                    <% } else { %>
+                      <span class="social-chip-fallback"><%= (p.display_name || p.username || "?").charAt(0).toUpperCase() %></span>
+                    <% } %>
+                    <span><%= p.display_name || p.username %></span>
+                  </a>
+                <% }) %>
+              </div>
+              <p class="social-context-summary">
+                You both follow
+                <strong><%= mutual.slice(0, 3).map(function(p){ return p.display_name || p.username; }).join(", ") %></strong>
+                <% if (mutual.length > 3) { %>
+                  and <%= mutual.length - 3 %> more
+                <% } %>
+              </p>
+            </div>
+          <% } %>
+        </div>
+      <% } %>
+
+      <!-- Live Twitch stream -->
+      <% if (typeof liveStream !== "undefined" && liveStream) { %>
+        <div class="twitch-embed-section">
+          <div class="twitch-embed-header">
+            <span class="live-badge">LIVE</span>
+            <span class="twitch-embed-title"><%= liveStream.title %></span>
+            <span class="twitch-embed-meta">
+              <%= liveStream.viewer_count?.toLocaleString?.() || liveStream.viewer_count %> viewers
+              · <%= liveStream.game_name || "" %>
+            </span>
+          </div>
+          <div class="twitch-embed-wrap">
+            <iframe
+              src="https://player.twitch.tv/?channel=<%= profile.twitch_username %>&parent=<%= twitchParent %>&muted=true"
+              allowfullscreen
+              scrolling="no"
+              frameborder="0"
+              allow="autoplay; fullscreen"
+              title="Twitch stream"
+            ></iframe>
+          </div>
+          <a href="https://twitch.tv/<%= profile.twitch_username %>" target="_blank" rel="noopener" class="nav-btn" style="margin-top: 0.75rem; display: inline-block;">
+            Open on Twitch
+          </a>
+        </div>
+      <% } else if (profile.twitch_username) { %>
+        <div class="twitch-offline">
+          <a href="https://twitch.tv/<%= profile.twitch_username %>" target="_blank" rel="noopener" style="color: var(--accent);">
+            <%= profile.twitch_username %>
+          </a>
+          is offline on Twitch
+        </div>
+      <% } %>
+
+      <!-- Achievements -->
+      <% if (typeof achievements !== "undefined" && achievements && achievements.length) { %>
+        <div class="page-header" style="margin-top: 1.75rem;">
+          <div>
+            <h2 style="font-size: 1.25rem; margin: 0; font-weight: 700;">Achievements</h2>
+            <p style="margin: 0.2rem 0 0; color: var(--text-muted); font-size: 0.9rem;">
+              <%= unlockedCount || 0 %> / <%= totalAchievements || achievements.length %> unlocked
+            </p>
+          </div>
+        </div>
+        <div class="achievements-grid">
+          <% achievements.forEach(function(a) { %>
+            <div class="achievement-card<%= a.unlocked ? ' unlocked' : ' locked' %>" title="<%= a.description %>">
+              <div class="achievement-icon"><%= a.icon %></div>
+              <div class="achievement-info">
+                <div class="achievement-title"><%= a.title %></div>
+                <div class="achievement-desc"><%= a.description %></div>
+                <% if (a.unlocked && a.unlocked_at) { %>
+                  <div class="achievement-date">
+                    <%= new Date(a.unlocked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %>
+                  </div>
+                <% } %>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <!-- Profile stats -->
+      <% 
+        const ps = typeof profileStats !== "undefined" && profileStats ? profileStats : null;
+        const yr = typeof statsYear !== "undefined" ? statsYear : new Date().getFullYear();
+      %>
+      <% if (ps) { %>
+        <div class="profile-stats-panel">
+          <div class="profile-stat-card">
+            <div class="profile-stat-value"><%= ps.reviewCount %></div>
+            <div class="profile-stat-label">Reviews</div>
+          </div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-value"><%= ps.avgRating !== null ? ps.avgRating.toFixed(1) : "—" %></div>
+            <div class="profile-stat-label">Avg rating</div>
+          </div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-value"><%= ps.completedThisYear %></div>
+            <div class="profile-stat-label">Completed in <%= yr %></div>
+          </div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-value"><%= ps.likesReceived %></div>
+            <div class="profile-stat-label">Likes received</div>
+          </div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-value"><%= ps.playingCount %></div>
+            <div class="profile-stat-label">Playing</div>
+          </div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-value"><%= ps.wantCount %></div>
+            <div class="profile-stat-label">Want to Play</div>
+          </div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-value"><%= ps.playedCount %></div>
+            <div class="profile-stat-label">Played</div>
+          </div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-value"><%= ps.listCount %></div>
+            <div class="profile-stat-label">Lists</div>
+          </div>
+        </div>
+      <% } %>
+
+      <!-- Lists -->
+      <% const lists = typeof userLists !== "undefined" && userLists ? userLists : []; %>
+      <% if (lists.length || (typeof userlog !== "undefined" && userlog && userlog.id === profile.id)) { %>
+        <div class="page-header" style="margin-top: 2rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%; flex-wrap:wrap; gap:0.5rem;">
+            <div>
+              <h2 style="font-size: 1.25rem; margin: 0; font-weight: 700;">Lists</h2>
+              <p style="margin: 0.2rem 0 0; color: var(--text-muted); font-size: 0.9rem;">
+                <%= lists.length %> list<%= lists.length === 1 ? "" : "s" %>
+              </p>
+            </div>
+            <% if (typeof userlog !== "undefined" && userlog && userlog.id === profile.id) { %>
+              <a href="/lists/new" class="nav-btn nav-btn-primary">+ New List</a>
+            <% } %>
+          </div>
+        </div>
+        <% if (lists.length) { %>
+          <div class="lists-grid">
+            <% lists.forEach(function(l) { %>
+              <a href="/lists/<%= l.id %>" class="list-card">
+                <div class="list-card-title"><%= l.title %></div>
+                <div class="list-card-meta">
+                  <%= l.item_count %> game<%= l.item_count === 1 ? "" : "s" %>
+                  <% if (l.is_ranked) { %> · Ranked <% } %>
+                </div>
+                <% if (l.description) { %>
+                  <div class="list-card-desc"><%= l.description.length > 80 ? l.description.slice(0, 80) + "…" : l.description %></div>
+                <% } %>
+              </a>
+            <% }) %>
+          </div>
+        <% } else { %>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">No lists yet.</p>
+        <% } %>
+      <% } %>
+
+      <!-- Status shelves -->
+      <% 
+        const shelves = typeof statusShelves !== "undefined" && statusShelves ? statusShelves : { want: [], playing: [], played: [] };
+        const shelfLabels = { want: "Want to Play", playing: "Playing", played: "Played" };
+        const hasShelves = (shelves.want && shelves.want.length) || (shelves.playing && shelves.playing.length) || (shelves.played && shelves.played.length);
+      %>
+      <% if (hasShelves) { %>
+        <div class="shelves-section">
+          <% ["playing", "want", "played"].forEach(function(key) { %>
+            <% if (shelves[key] && shelves[key].length) { %>
+              <div class="shelf-block">
+                <h3 class="shelf-title"><%= shelfLabels[key] %> <span class="shelf-count"><%= shelves[key].length %></span></h3>
+                <div class="shelf-row">
+                  <% shelves[key].forEach(function(g) { %>
+                    <a href="/game/<%= g.game_id %>" class="shelf-card" title="<%= g.title %>">
+                      <% if (g.cover_url) { %>
+                        <img src="<%= g.cover_url %>" alt="<%= g.title %>" />
+                      <% } else { %>
+                        <div class="shelf-card-placeholder"><%= (g.title || "?").charAt(0) %></div>
+                      <% } %>
+                      <span class="shelf-card-title"><%= g.title %></span>
+                    </a>
+                  <% }) %>
+                </div>
+              </div>
+            <% } %>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <!-- Reviews section -->
+      <div class="page-header" style="margin-top: 2rem;">
+        <div>
+          <h2 style="font-size: 1.25rem; margin: 0; font-weight: 700;">
+            <% if (typeof userlog !== "undefined" && userlog && userlog.id === profile.id) { %>
+              Your Reviews
+            <% } else { %>
+              Reviews
+            <% } %>
+          </h2>
+          <p style="margin: 0.2rem 0 0; color: var(--text-muted); font-size: 0.9rem;">
+            <% if (userInfo && userInfo.length) { %>
+              <%= userInfo.length %> game<%= userInfo.length === 1 ? "" : "s" %> reviewed
+            <% } else { %>
+              No reviews yet
+            <% } %>
+          </p>
+        </div>
+      </div>
+
+      <% if (!userInfo || userInfo.length === 0) { %>
+        <div class="empty-state">
+          <% if (typeof userlog !== "undefined" && userlog && userlog.id === profile.id) { %>
+            <h2>No reviews yet</h2>
+            <p>Share your first game review with the community.</p>
+            <a href="/log" class="nav-btn nav-btn-primary">+ Log</a>
+          <a href="/add" class="nav-btn">Review</a>
+          <% } else { %>
+            <h2>No reviews yet</h2>
+            <p>This user hasn’t posted any reviews.</p>
+          <% } %>
+        </div>
+      <% } else { %>
+        <div class="game-list">
+          <% for (let i = 0; i < userInfo.length; i++) { %>
+            <%- include("partials/game.ejs", { i: i }) %>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      function toggleNotes(id) {
+        const notes = document.getElementById("notes-" + id);
+        const btn = document.getElementById("expand-" + id);
+        if (notes.classList.contains("clamped")) {
+          notes.classList.remove("clamped");
+          btn.textContent = "Show less";
+        } else {
+          notes.classList.add("clamped");
+          btn.textContent = "Read more";
+        }
+      }
+      function startEditComment(id) {
+        document.getElementById("comment-body-" + id).style.display = "none";
+        document.getElementById("edit-form-" + id).style.display = "block";
+      }
+      function cancelEditComment(id) {
+        document.getElementById("comment-body-" + id).style.display = "block";
+        document.getElementById("edit-form-" + id).style.display = "none";
+      }
+    </script>
+      <script src="/js/likes.js"></script>
+    <script src="/js/comments.js"></script>
+      <script src="/js/follow.js"></script>
+      <script src="/js/nav.js"></script>
+  </body>
+</html>
