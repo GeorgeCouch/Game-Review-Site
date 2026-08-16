@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Two-factor authentication – GameCouch</title>
+    <%- include('partials/head') %>
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: null, showSort: false }) %>
+    <div class="page-wrapper">
+      <div class="form-card auth-card">
+        <h1>Two-factor authentication</h1>
+        <p class="auth-sub">Enter the 6-digit code from your authenticator app</p>
+        <% if (typeof error !== "undefined" && error) { %>
+          <div class="auth-alert auth-alert-error"><%= error %></div>
+        <% } %>
+        <form action="/login/2fa" method="POST">
+          <div class="mb-3">
+            <label class="form-label">Authentication code</label>
+            <input class="form-control" type="text" name="code" inputmode="numeric" pattern="[0-9 ]{6,8}" autocomplete="one-time-code" placeholder="123 456" required />
+          </div>
+          <button type="submit" class="btn-submit">Verify</button>
+        </form>
+        <p class="auth-footer"><a href="/login">Back to login</a></p>
+      </div>
+    </div>
+    <script src="/js/nav.js"></script>
+  </body>
+</html>

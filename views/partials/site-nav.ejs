@@ -138,7 +138,7 @@
   <div class="nav-drawer" id="nav-drawer" role="dialog" aria-modal="true" aria-label="Site menu" hidden>
     <div class="nav-drawer-inner" role="navigation" aria-label="Mobile">
       <div class="nav-search-wrap nav-search-wrap-mobile" id="nav-search-wrap-mobile">
-        <div class="nav-search">
+        <div class="nav-search nav-search-drawer">
           <svg class="nav-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
@@ -153,18 +153,35 @@
         </div>
         <div id="nav-search-results-mobile" class="nav-search-results nav-search-results-mobile" hidden role="listbox"></div>
       </div>
-      <a href="/feed" class="nav-drawer-link">Feed</a>
-      <a href="/explore" class="nav-drawer-link">Explore</a>
-      <a href="/activity" class="nav-drawer-link">Activity</a>
-      <a href="/leaderboards" class="nav-drawer-link">Leaderboards</a>
-      <a href="/messages" class="nav-drawer-link">Messages</a>
+
+      <p class="nav-drawer-section">Browse</p>
+      <div class="nav-drawer-group">
+        <a href="/explore" class="nav-drawer-link">Explore</a>
+        <% if (typeof userlog !== "undefined" && userlog) { %>
+          <a href="/activity" class="nav-drawer-link">Activity</a>
+        <% } %>
+        <a href="/leaderboards" class="nav-drawer-link">Boards</a>
+        <% if (typeof userlog !== "undefined" && userlog) { %>
+          <a href="/messages" class="nav-drawer-link">Messages</a>
+        <% } %>
+      </div>
+
       <% if (typeof userlog !== "undefined" && userlog) { %>
-        <div class="nav-drawer-divider"></div>
-        <button type="button" class="nav-drawer-link" data-open-review-modal style="width:100%;text-align:left;background:transparent;border:none;cursor:pointer;font:inherit;color:inherit;">Write Review</button>
-        <a href="/settings#notifications" class="nav-drawer-link">Push alerts</a>
-        <a href="/settings" class="nav-drawer-link">Settings</a>
+        <p class="nav-drawer-section">Account</p>
+        <div class="nav-drawer-group">
+          <button type="button" class="nav-drawer-link nav-drawer-link-cta" data-open-review-modal>+ Review</button>
+          <% if (userlog.username) { %>
+            <a href="/u/<%= userlog.username %>" class="nav-drawer-link">Profile</a>
+          <% } %>
+          <a href="/settings" class="nav-drawer-link">Settings</a>
+          <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
+            <a href="/admin" class="nav-drawer-link">Admin</a>
+          <% } %>
         <div class="nav-drawer-theme">
-          <span>Theme</span>
+          <div class="nav-drawer-theme-label">
+            <span class="nav-drawer-theme-title">Theme</span>
+            <span class="nav-drawer-theme-sub">Light / dark</span>
+          </div>
           <button type="button" class="theme-switch" id="nav-theme-toggle-mobile" aria-label="Toggle light and dark mode">
             <span class="theme-switch-icon theme-switch-sun" aria-hidden="true">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -179,17 +196,35 @@
             </span>
           </button>
         </div>
-        <% if (userlog.username) { %>
-          <a href="/u/<%= userlog.username %>" class="nav-drawer-link">Profile</a>
-        <% } %>
-        <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
-          <a href="/admin" class="nav-drawer-link">Admin</a>
-        <% } %>
-        <a href="/logout" class="nav-drawer-link">Logout</a>
+
+          <a href="/logout" class="nav-drawer-link nav-drawer-link-danger">Logout</a>
+        </div>
       <% } else { %>
-        <div class="nav-drawer-divider"></div>
-        <a href="/login" class="nav-drawer-link">Login</a>
-        <a href="/register" class="nav-drawer-link">Register</a>
+        <p class="nav-drawer-section">Account</p>
+        <div class="nav-drawer-group">
+        <div class="nav-drawer-theme">
+          <div class="nav-drawer-theme-label">
+            <span class="nav-drawer-theme-title">Theme</span>
+            <span class="nav-drawer-theme-sub">Light / dark</span>
+          </div>
+          <button type="button" class="theme-switch" id="nav-theme-toggle-mobile-guest" aria-label="Toggle light and dark mode">
+            <span class="theme-switch-icon theme-switch-sun" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+              </svg>
+            </span>
+            <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
+            <span class="theme-switch-icon theme-switch-moon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/>
+              </svg>
+            </span>
+          </button>
+        </div>
+
+          <a href="/login" class="nav-drawer-link nav-drawer-link-cta">Login</a>
+          <a href="/register" class="nav-drawer-link">Register</a>
+        </div>
       <% } %>
     </div>
   </div>

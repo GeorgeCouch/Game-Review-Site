@@ -5,15 +5,22 @@
     <%- include('partials/head') %>
   </head>
   <body>
-    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
-<div class="page-wrapper">
-      <div class="form-card">
-        <h1>Create Account</h1>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : null, showSort: false }) %>
+    <div class="page-wrapper">
+      <div class="form-card auth-card">
+        <h1>Create account</h1>
+        <p class="auth-sub">Join GameCouch and start logging games</p>
 
         <% if (typeof error !== "undefined" && error) { %>
-          <div style="background: rgba(255,92,92,0.15); border: 1px solid var(--danger); color: #ff8a8a; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1.25rem;">
-            <%= error %>
-          </div>
+          <div class="auth-alert auth-alert-error"><%= error %></div>
+        <% } %>
+
+        <% if (typeof googleAuth !== "undefined" && googleAuth) { %>
+          <a href="/auth/google" class="auth-google-btn">
+            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3.1l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.5-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 12 24 12c3.1 0 5.8 1.2 8 3.1l5.7-5.7C34.1 6.5 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.3 0-9.7-3.3-11.3-8H6.2v5.1C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l.1.1 6.2 5.2C39.2 37.3 44 32 44 24c0-1.3-.1-2.5-.4-3.5z"/></svg>
+            Sign up with Google
+          </a>
+          <div class="auth-divider"><span>or</span></div>
         <% } %>
 
         <form action="/register" method="POST">
@@ -21,64 +28,30 @@
             <label class="form-label">Username</label>
             <div class="input-group">
               <span class="input-group-text" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 10px 0 0 10px;">@</span>
-              <input
-                class="form-control"
-                type="text"
-                name="handle"
-                placeholder="coolgamer42"
-                pattern="[a-z][a-z0-9_]{2,29}"
-                title="3–30 characters. Start with a letter. Only lowercase letters, numbers, and underscores."
-                required
-                style="border-radius: 0 10px 10px 0;"
-              />
+              <input class="form-control" type="text" name="handle" placeholder="coolgamer42" pattern="[a-z][a-z0-9_]{2,29}" title="3–30 characters. Start with a letter. Only lowercase letters, numbers, and underscores." required style="border-radius: 0 10px 10px 0;" />
             </div>
-            <small style="color: var(--text-muted); font-size: 0.8rem;">
-              This will be your public @username
-            </small>
           </div>
-
           <div class="mb-3">
             <label class="form-label">Display Name</label>
-            <input
-              class="form-control"
-              type="text"
-              name="display_name"
-              placeholder="How you want to appear"
-              maxlength="100"
-            />
+            <input class="form-control" type="text" name="display_name" placeholder="How you want to appear" maxlength="100" />
           </div>
-
           <div class="mb-3">
             <label class="form-label">Email</label>
-            <input
-              class="form-control"
-              type="email"
-              name="username"
-              placeholder="you@example.com"
-              required
-            />
+            <input class="form-control" type="email" name="username" placeholder="you@example.com" required />
           </div>
-
           <div class="mb-3">
             <label class="form-label">Password</label>
-            <input
-              class="form-control"
-              type="password"
-              name="password"
-              required
-              minlength="6"
-            />
+            <input class="form-control" type="password" name="password" required minlength="6" />
           </div>
-
           <button type="submit" class="btn-submit">Register</button>
         </form>
 
-        <p style="text-align: center; margin-top: 1.25rem; color: var(--text-muted); font-size: 0.9rem;">
+        <p class="auth-footer">
           Already have an account?
-          <a href="/login" style="color: var(--accent);">Login</a>
+          <a href="/login">Login</a>
         </p>
       </div>
     </div>
-      <script src="/js/nav.js"></script>
+    <script src="/js/nav.js"></script>
   </body>
 </html>

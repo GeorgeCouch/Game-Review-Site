@@ -58,17 +58,6 @@
           </button>
         </form>
       </div>
-    <% } else if (typeof userlog !== "undefined" && userlog && userlog.id !== userInfo[i].user_id) { %>
-      <div class="cover-actions">
-        <button
-          type="button"
-          class="action-btn report-btn<%= isReported ? ' reported' : '' %>"
-          data-target-type="review"
-          data-target-id="<%= reviewId %>"
-          data-reported="<%= isReported ? '1' : '0' %>"
-          title="<%= isReported ? 'Reported' : 'Report review' %>"
-        >⚑</button>
-      </div>
     <% } %>
   </div>
 
@@ -104,30 +93,57 @@
         <% } %>
       </div>
       <div class="review-like-stack">
-        <% if (typeof userlog !== "undefined" && userlog) { %>
-          <button
-            type="button"
-            class="action-btn like-btn<%= isLiked ? ' liked' : '' %>"
-            data-review-id="<%= reviewId %>"
-            data-liked="<%= isLiked ? '1' : '0' %>"
-            title="<%= isLiked ? 'Unlike' : 'Like' %>"
-          >
-            <svg viewBox="0 0 24 24" fill="<%= isLiked ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-            </svg>
-          </button>
-        <% } else { %>
-          <a href="/login" class="action-btn" title="Log in to like">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-            </svg>
-          </a>
-        <% } %>
-        <span class="like-count" data-review-id="<%= reviewId %>"><%= likeCount %></span>
+        <a
+          href="/review/<%= reviewId %>"
+          class="action-btn review-permalink-btn"
+          title="Open review page"
+          aria-label="Open review page"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 3 21 3 21 9"/>
+            <polyline points="9 21 3 21 3 15"/>
+            <line x1="21" y1="3" x2="14" y2="10"/>
+            <line x1="3" y1="21" x2="10" y2="14"/>
+          </svg>
+        </a>
+        <div class="review-like-col">
+          <% if (typeof userlog !== "undefined" && userlog) { %>
+            <button
+              type="button"
+              class="action-btn like-btn<%= isLiked ? ' liked' : '' %>"
+              data-review-id="<%= reviewId %>"
+              data-liked="<%= isLiked ? '1' : '0' %>"
+              title="<%= isLiked ? 'Unlike' : 'Like' %>"
+            >
+              <svg viewBox="0 0 24 24" fill="<%= isLiked ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+            </button>
+          <% } else { %>
+            <a href="/login" class="action-btn" title="Log in to like">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+            </a>
+          <% } %>
+          <span class="like-count" data-review-id="<%= reviewId %>"><%= likeCount %></span>
+        </div>
       </div>
     </div>
 
-    <h2 class="game-title"><a href="/game/<%= userInfo[i].game_id %>"><%= userInfo[i].title %></a></h2>
+    <div class="review-title-row">
+      <h2 class="game-title"><a href="/game/<%= userInfo[i].game_id %>"><%= userInfo[i].title %></a></h2>
+      <% if (typeof userlog !== "undefined" && userlog && userlog.id !== userInfo[i].user_id) { %>
+        <button
+          type="button"
+          class="action-btn report-btn review-title-report<%= isReported ? ' reported' : '' %>"
+          data-target-type="review"
+          data-target-id="<%= reviewId %>"
+          data-reported="<%= isReported ? '1' : '0' %>"
+          title="<%= isReported ? 'Reported' : 'Report review' %>"
+        >⚑</button>
+      <% } %>
+    </div>
 
     <div class="stars" aria-label="Rating <%= rating.toFixed(1) %> out of 5">
       <% for (let s = 1; s <= 5; s++) { %>

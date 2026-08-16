@@ -105,16 +105,19 @@
           </div>
         </a>
 
-        <div class="landing-teaser landing-teaser-xp">
+        <% const xpHref = (typeof userlog !== "undefined" && userlog && userlog.username) ? ("/u/" + userlog.username) : "/register"; %>
+        <a href="<%= xpHref %>" class="landing-teaser landing-teaser-xp">
           <div class="landing-teaser-copy">
             <p class="landing-teaser-kicker">Progression</p>
             <h2>XP, ranks & achievements</h2>
             <p>Every review, log, and like fuels your level. Climb ranks and unlock badges on your profile.</p>
-            <% if (typeof userlog !== "undefined" && userlog && userlog.username) { %>
-              <a href="/u/<%= userlog.username %>" class="landing-teaser-link">See your profile →</a>
-            <% } else { %>
-              <a href="/register" class="landing-teaser-link">Start leveling up →</a>
-            <% } %>
+            <span class="landing-teaser-link">
+              <% if (typeof userlog !== "undefined" && userlog && userlog.username) { %>
+                See your profile →
+              <% } else { %>
+                Start leveling up →
+              <% } %>
+            </span>
           </div>
           <div class="landing-teaser-visual" aria-hidden="true">
             <div class="xp-mock">
@@ -131,7 +134,7 @@
               </div>
             </div>
           </div>
-        </div>
+        </a>
       </section>
 
       <% if (typeof recentReviews !== "undefined" && recentReviews && recentReviews.length) { %>

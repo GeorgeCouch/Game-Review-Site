@@ -5,6 +5,7 @@ import bodyParser from "body-parser";
 import axios from "axios";
 import Pool from "pg-pool";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import env from "dotenv";
 import passport from "passport";
 import PGStore from "connect-pg-simple";
@@ -185,6 +186,174 @@ app.use(
 //#region Passport initialization middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+
+//#region Auth helpers: recovery + 2FA (TOTP)
+async function ensureAuthColumns() {
+  try {
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE`);
+    // Google OAuth users have no local password
+    await db.query(`ALTER TABLE users ALTER COLUMN password DROP NOT NULL`);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS email_verification_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) {
+    console.error("ensureAuthColumns:", e.message);
+  }
+}
+ensureAuthColumns();
+
+function base32Encode(buf) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let value = 0;
+  let output = "";
+  for (const byte of buf) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      output += alphabet[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) output += alphabet[(value << (5 - bits)) & 31];
+  return output;
+}
+
+function base32Decode(str) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const cleaned = String(str || "").toUpperCase().replace(/=+$/g, "").replace(/[^A-Z2-7]/g, "");
+  let bits = 0;
+  let value = 0;
+  const out = [];
+  for (const ch of cleaned) {
+    const idx = alphabet.indexOf(ch);
+    if (idx === -1) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(out);
+}
+
+function generateTotpSecret() {
+  return base32Encode(crypto.randomBytes(20));
+}
+
+function hotp(secretBuf, counter) {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64BE(BigInt(counter));
+  const hmac = crypto.createHmac("sha1", secretBuf).update(buf).digest();
+  const offset = hmac[hmac.length - 1] & 0xf;
+  const code = ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16) | ((hmac[offset + 2] & 0xff) << 8) | (hmac[offset + 3] & 0xff);
+  return String(code % 1000000).padStart(6, "0");
+}
+
+function verifyTotp(secretBase32, token, window = 1) {
+  const secretBuf = base32Decode(secretBase32);
+  const counter = Math.floor(Date.now() / 1000 / 30);
+  const code = String(token || "").replace(/\s/g, "");
+  if (!/^\d{6}$/.test(code)) return false;
+  for (let w = -window; w <= window; w++) {
+    if (hotp(secretBuf, counter + w) === code) return true;
+  }
+  return false;
+}
+
+function totpOtpauthUrl(secret, email) {
+  const label = encodeURIComponent("GameCouch:" + (email || "user"));
+  const issuer = encodeURIComponent("GameCouch");
+  return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+}
+
+async function sendMail({ to, subject, text, html }) {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@gamecouch.local";
+  if (!host || !user || !pass) {
+    console.log("[mail:dev] SMTP not configured. Email contents:");
+    console.log("  To:", to);
+    console.log("  Subject:", subject);
+    console.log("  Body:\n" + text);
+    return { ok: true, dev: true };
+  }
+  try {
+    const nodemailer = (await import("nodemailer")).default;
+    const port = Number(process.env.SMTP_PORT || 587);
+    const secure = String(process.env.SMTP_SECURE || "") === "true" || port === 465;
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: { user, pass },
+      tls: {
+        // Helpful for some local / corporate SMTP setups
+        rejectUnauthorized: String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || "true") !== "false",
+      },
+    });
+    const info = await transporter.sendMail({ from, to, subject, text, html });
+    console.log("[mail:sent]", { to, subject, messageId: info && info.messageId });
+    return { ok: true, messageId: info && info.messageId };
+  } catch (e) {
+    console.error("sendMail error:", e.message);
+    console.log("[mail:fallback] Could not send. Email contents:");
+    console.log("  To:", to);
+    console.log("  Subject:", subject);
+    console.log("  Body:\n" + text);
+    return { ok: false, error: e.message };
+  }
+}
+
+
+async function createAndSendEmailVerification(req, user) {
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await db.query("DELETE FROM email_verification_tokens WHERE user_id = $1", [user.id]);
+  await db.query(
+    `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+    [user.id, tokenHash, expires]
+  );
+  const link = `${appBaseUrl(req)}/verify-email?token=${token}`;
+  await sendMail({
+    to: user.email,
+    subject: "Verify your GameCouch email",
+    text: `Welcome to GameCouch! Verify your email (expires in 24 hours):\n\n${link}\n\nIf you did not create an account, ignore this email.`,
+    html: `<p>Welcome to GameCouch!</p><p>Verify your email (expires in 24 hours):</p><p><a href="${link}">${link}</a></p><p>If you did not create an account, ignore this email.</p>`,
+  });
+  return link;
+}
+
+function appBaseUrl(req) {
+  return process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+}
+//#endregion
+
+
 
 // Unread notification count for nav badges (after passport so req.user exists)
 app.use(async (req, res, next) => {
@@ -1355,11 +1524,16 @@ app.post("/add-game", async (req, res) => {
   const released = req.body.released || null;
   const completed = req.body.completed;
   const rating = req.body.rating;
-  const notes = req.body.review;
-  const hasSpoilers = req.body.has_spoilers === "1" || req.body.has_spoilers === "on";
+  const notes = String(req.body.review || "").trim();
+  const hasSpoilers = notes
+    ? (req.body.has_spoilers === "1" || req.body.has_spoilers === "on")
+    : false;
 
   if (!gameId || !title) {
     return res.redirect("/feed?review=1&error=select");
+  }
+  if (rating === undefined || rating === null || rating === "") {
+    return res.redirect("/feed?review=1&error=rating");
   }
 
   try {
@@ -1398,7 +1572,7 @@ app.post("/edit-game", async (req, res) => {
   const reviewId = parseInt(req.body.review_id, 10);
   const completed = req.body.completed;
   const rating = req.body.rating;
-  const notes = req.body.review;
+  const notes = String(req.body.review || "").trim();
   const hasSpoilers = req.body.has_spoilers === "1" || req.body.has_spoilers === "on";
   if (!reviewId) return res.redirect("back");
 
@@ -1639,22 +1813,234 @@ app.post("/delete-comment", async (req, res) => {
 
 //#region gets for login and register
 app.get("/login", (req, res) => {
-  res.render("login.ejs");
+  if (req.isAuthenticated()) return res.redirect("/");
+  res.render("login.ejs", {
+    googleAuth: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    error: req.query.error || null,
+    info: req.query.info || null,
+  });
 });
 
 app.get("/register", (req, res) => {
-  res.render("register.ejs");
+  if (req.isAuthenticated()) return res.redirect("/");
+  res.render("register.ejs", {
+    googleAuth: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    error: req.query.error || null,
+  });
+});
+
+app.get("/forgot-password", (req, res) => {
+  if (req.isAuthenticated()) return res.redirect("/");
+  res.render("forgot-password.ejs", { error: null, info: null });
+});
+
+app.post("/forgot-password", async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const generic = "If an account exists for that email, a reset link has been sent.";
+  if (!email) {
+    return res.render("forgot-password.ejs", { error: "Enter your email address.", info: null });
+  }
+  try {
+    const result = await db.query("SELECT id, email FROM users WHERE LOWER(email) = $1", [email]);
+    if (result.rows.length) {
+      const user = result.rows[0];
+      const token = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const expires = new Date(Date.now() + 60 * 60 * 1000);
+      await db.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [user.id]);
+      await db.query(
+        `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+        [user.id, tokenHash, expires]
+      );
+      const link = `${appBaseUrl(req)}/reset-password?token=${token}`;
+      await sendMail({
+        to: user.email,
+        subject: "Reset your GameCouch password",
+        text: `Reset your password (expires in 1 hour):
+
+${link}
+
+If you did not request this, ignore this email.`,
+        html: `<p>Reset your GameCouch password (expires in 1 hour):</p><p><a href="${link}">${link}</a></p><p>If you did not request this, ignore this email.</p>`,
+      });
+    }
+  } catch (e) {
+    console.error("forgot-password:", e.message);
+  }
+  res.render("forgot-password.ejs", { error: null, info: generic });
+});
+
+app.get("/reset-password", async (req, res) => {
+  const token = String(req.query.token || "");
+  if (!token) return res.redirect("/forgot-password");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  try {
+    const r = await db.query(
+      `SELECT * FROM password_reset_tokens WHERE token_hash = $1 AND used = FALSE AND expires_at > NOW()`,
+      [tokenHash]
+    );
+    if (!r.rows.length) {
+      return res.render("forgot-password.ejs", { error: "That reset link is invalid or expired.", info: null });
+    }
+    res.render("reset-password.ejs", { token, error: null });
+  } catch (e) {
+    res.redirect("/forgot-password");
+  }
+});
+
+app.post("/reset-password", async (req, res) => {
+  const token = String(req.body.token || "");
+  const password = String(req.body.password || "");
+  const confirm = String(req.body.confirm_password || "");
+  if (!token) return res.redirect("/forgot-password");
+  if (password.length < 6) {
+    return res.render("reset-password.ejs", { token, error: "Password must be at least 6 characters." });
+  }
+  if (password !== confirm) {
+    return res.render("reset-password.ejs", { token, error: "Passwords do not match." });
+  }
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  try {
+    const r = await db.query(
+      `SELECT * FROM password_reset_tokens WHERE token_hash = $1 AND used = FALSE AND expires_at > NOW()`,
+      [tokenHash]
+    );
+    if (!r.rows.length) {
+      return res.render("forgot-password.ejs", { error: "That reset link is invalid or expired.", info: null });
+    }
+    const row = r.rows[0];
+    const hash = await bcrypt.hash(password, saltRounds);
+    await db.query("UPDATE users SET password = $1 WHERE id = $2", [hash, row.user_id]);
+    await db.query("UPDATE password_reset_tokens SET used = TRUE WHERE id = $1", [row.id]);
+    res.redirect("/login?info=" + encodeURIComponent("Password updated. You can log in now."));
+  } catch (e) {
+    console.error("reset-password:", e.message);
+    res.render("reset-password.ejs", { token, error: "Could not reset password. Try again." });
+  }
+});
+
+
+app.get("/verify-email", async (req, res) => {
+  const token = String(req.query.token || "");
+  if (!token) {
+    return res.render("check-email.ejs", { email: null, error: "Missing verification token.", info: null });
+  }
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  try {
+    const r = await db.query(
+      `SELECT * FROM email_verification_tokens WHERE token_hash = $1 AND used = FALSE AND expires_at > NOW()`,
+      [tokenHash]
+    );
+    if (!r.rows.length) {
+      return res.render("check-email.ejs", {
+        email: null,
+        error: "That verification link is invalid or expired.",
+        info: null,
+      });
+    }
+    const row = r.rows[0];
+    await db.query("UPDATE users SET email_verified = TRUE WHERE id = $1", [row.user_id]);
+    await db.query("UPDATE email_verification_tokens SET used = TRUE WHERE id = $1", [row.id]);
+    const user = (await db.query("SELECT * FROM users WHERE id = $1", [row.user_id])).rows[0];
+    req.login(user, (err) => {
+      if (err) {
+        return res.redirect("/login?info=" + encodeURIComponent("Email verified. You can log in now."));
+      }
+      res.redirect("/u/" + user.username);
+    });
+  } catch (e) {
+    console.error("verify-email:", e.message);
+    res.render("check-email.ejs", { email: null, error: "Could not verify email.", info: null });
+  }
+});
+
+app.post("/resend-verification", async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  if (!email) {
+    if (req.isAuthenticated()) {
+      return res.redirect("/profile/edit?error=" + encodeURIComponent("Email is required.") + "#security");
+    }
+    return res.render("check-email.ejs", { email: null, error: "Enter your email.", info: null });
+  }
+  try {
+    const r = await db.query("SELECT * FROM users WHERE LOWER(email) = $1", [email]);
+    if (r.rows.length && r.rows[0].email_verified !== true) {
+      await createAndSendEmailVerification(req, r.rows[0]);
+    }
+  } catch (e) {
+    console.error("resend-verification:", e.message);
+  }
+  if (req.isAuthenticated()) {
+    return res.redirect("/profile/edit?ok=verify-sent#security");
+  }
+  res.render("check-email.ejs", {
+    email,
+    info: "If that account needs verification, we sent a new link.",
+    error: null,
+  });
+});
+
+
+app.get("/login/2fa", (req, res) => {
+  if (req.isAuthenticated()) return res.redirect("/");
+  if (!req.session.pending2faUserId) return res.redirect("/login");
+  res.render("login-2fa.ejs", { error: null });
+});
+
+app.post("/login/2fa", async (req, res) => {
+  if (req.isAuthenticated()) return res.redirect("/");
+  const pendingId = req.session.pending2faUserId;
+  if (!pendingId) return res.redirect("/login");
+  const code = String(req.body.code || "").trim();
+  try {
+    const r = await db.query("SELECT * FROM users WHERE id = $1", [pendingId]);
+    const user = r.rows[0];
+    if (!user || !user.totp_enabled || !user.totp_secret) {
+      delete req.session.pending2faUserId;
+      return res.redirect("/login");
+    }
+    if (!verifyTotp(user.totp_secret, code)) {
+      return res.render("login-2fa.ejs", { error: "Invalid authentication code." });
+    }
+    delete req.session.pending2faUserId;
+    req.login(user, (err) => {
+      if (err) return res.render("login-2fa.ejs", { error: "Login failed." });
+      res.redirect("/");
+    });
+  } catch (e) {
+    res.render("login-2fa.ejs", { error: "Something went wrong." });
+  }
 });
 //#endregion
 
 //#region post for login and register
-app.post(
-  "/login",
-  passport.authenticate("local", {
-    successRedirect: "/",
-    failureRedirect: "/login",
-  })
-);
+app.post("/login", (req, res, next) => {
+  passport.authenticate("local", (err, user, info) => {
+    if (err) return next(err);
+    if (!user) {
+      return res.render("login.ejs", {
+        error: (info && info.message) || "Invalid email or password.",
+        googleAuth: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+        info: null,
+      });
+    }
+    if (user.email_verified === false && !user.google_id) {
+      return res.render("check-email.ejs", {
+        email: user.email,
+        info: "Please verify your email before logging in.",
+        error: null,
+      });
+    }
+    if (user.totp_enabled && user.totp_secret) {
+      req.session.pending2faUserId = user.id;
+      return res.redirect("/login/2fa");
+    }
+    req.login(user, (loginErr) => {
+      if (loginErr) return next(loginErr);
+      return res.redirect("/");
+    });
+  })(req, res, next);
+});
 
 app.post("/register", async (req, res) => {
   const email = (req.body.username || "").trim().toLowerCase();
@@ -1679,14 +2065,19 @@ app.post("/register", async (req, res) => {
     }
     try {
       const result = await db.query(
-        `INSERT INTO users (email, password, username, display_name)
-         VALUES ($1, $2, $3, $4) RETURNING *`,
+        `INSERT INTO users (email, password, username, display_name, email_verified)
+         VALUES ($1, $2, $3, $4, FALSE) RETURNING *`,
         [email, hash, handle, displayName]
       );
       const user = result.rows[0];
-      req.login(user, (err) => {
-        if (err) console.error(err);
-        res.redirect(`/u/${user.username}`);
+      try {
+        await createAndSendEmailVerification(req, user);
+      } catch (e) {
+        console.error("verification email failed:", e.message);
+      }
+      return res.render("check-email.ejs", {
+        email: user.email,
+        info: "We sent a verification link to your email. Click it to activate your account.",
       });
     } catch (dbErr) {
       console.error("Registration error:", dbErr.message);
@@ -1726,6 +2117,9 @@ passport.use(
       }
       let newResult = result.rows[0];
       let storedHashedPassword = newResult.password;
+      if (!storedHashedPassword || !String(storedHashedPassword).startsWith("$2")) {
+        return cb(null, false, { message: "This account uses Google sign-in. Use Continue with Google." });
+      }
       bcrypt.compare(password, storedHashedPassword, (err, result) => {
         if (err) {
           console.log(err);
@@ -1753,24 +2147,43 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: "http://localhost:3000/auth/google/profile",
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:3000/auth/google/profile",
         userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
       },
       async (accessToken, refreshToken, profile, cb) => {
         try {
-          console.log(profile);
-          const result = await db.query("SELECT * FROM users WHERE email = $1", [
-            profile.email,
-          ]);
+          const email = (profile.email || "").toLowerCase();
+          if (!email) return cb(null, false, { message: "Google account has no email." });
+          let result = await db.query("SELECT * FROM users WHERE LOWER(email) = $1", [email]);
+          if (result.rows.length === 0 && profile.id) {
+            result = await db.query("SELECT * FROM users WHERE google_id = $1", [String(profile.id)]);
+          }
           if (result.rows.length === 0) {
+            const base = String(email.split("@")[0] || "player")
+              .toLowerCase()
+              .replace(/[^a-z0-9_]/g, "")
+              .replace(/^[^a-z]+/, "") || "player";
+            let handle = (base + Math.floor(Math.random() * 900 + 100)).slice(0, 30);
+            if (!/^[a-z]/.test(handle)) handle = ("g" + handle).slice(0, 30);
+            for (let i = 0; i < 5; i++) {
+              const exists = await db.query("SELECT 1 FROM users WHERE username = $1", [handle]);
+              if (!exists.rows.length) break;
+              handle = (base + Math.floor(Math.random() * 9000 + 1000)).slice(0, 30);
+            }
+            const display = profile.displayName || handle;
             const newUser = await db.query(
-              "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *",
-              [profile.email, "google"]
+              `INSERT INTO users (email, password, username, display_name, google_id, email_verified)
+               VALUES ($1, NULL, $2, $3, $4, TRUE) RETURNING *`,
+              [email, handle, display, profile.id ? String(profile.id) : null]
             );
             return cb(null, newUser.rows[0]);
-          } else {
-            return cb(null, result.rows[0]);
           }
+          const existing = result.rows[0];
+          if (profile.id && !existing.google_id) {
+            await db.query("UPDATE users SET google_id = $1 WHERE id = $2", [String(profile.id), existing.id]);
+            existing.google_id = String(profile.id);
+          }
+          return cb(null, existing);
         } catch (err) {
           return cb(err);
         }
@@ -2374,8 +2787,11 @@ app.get("/u/:username/mutual", async (req, res) => {
     if (!userResult.rows.length) return res.status(404).send("User not found");
     const profile = userResult.rows[0];
 
-    // Mutual tab is only meaningful on other people's profiles
-    if (req.user && req.user.id === profile.id) {
+    // Mutual tab requires a logged-in viewer, and only on other people's profiles
+    if (!req.user) {
+      return res.redirect(`/u/${profile.username}/followers`);
+    }
+    if (req.user.id === profile.id) {
       return res.redirect(`/u/${profile.username}/followers`);
     }
 
@@ -2946,7 +3362,9 @@ app.get("/review/:id", async (req, res) => {
     const reviewRes = await db.query(
       `SELECT games.*, users.email AS author_email,
               users.username AS author_username, users.display_name AS author_display_name,
-              users.avatar_url AS author_avatar
+              users.avatar_url AS author_avatar,
+              users.profile_title AS author_profile_title,
+              COALESCE(users.total_xp, 0)::int AS author_total_xp
        FROM games
        LEFT JOIN users ON games.user_id = users.id
        WHERE games.id = $1`,
@@ -3618,6 +4036,28 @@ app.post("/api/notifications/read-all", async (req, res) => {
   }
 });
 
+app.post("/api/notifications/:id/clear", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ ok: false, error: "Login required" });
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "Invalid id" });
+    const del = await db.query(
+      "DELETE FROM notifications WHERE id = $1 AND user_id = $2 RETURNING id",
+      [id, req.user.id]
+    );
+    const unread = (
+      await db.query(
+        'SELECT COUNT(*)::int AS c FROM notifications WHERE user_id = $1 AND "read" = FALSE',
+        [req.user.id]
+      )
+    ).rows[0].c;
+    res.json({ ok: true, unread, deleted: del.rowCount });
+  } catch (err) {
+    console.error("Clear notification error:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post("/api/notifications/clear-all", async (req, res) => {
   if (!req.isAuthenticated()) return res.status(401).json({ ok: false });
   try {
@@ -3642,47 +4082,143 @@ app.post("/notifications/read", async (req, res) => {
 
 
 
+
+//#region 2FA settings
+
+app.post("/settings/test-smtp", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const to = req.user.email;
+  if (!to) {
+    return res.redirect("/profile/edit?error=" + encodeURIComponent("No email on your account.") + "#security");
+  }
+  const result = await sendMail({
+    to,
+    subject: "GameCouch SMTP test",
+    text: "If you received this, SMTP is working for GameCouch.",
+    html: "<p>If you received this, <strong>SMTP is working</strong> for GameCouch.</p>",
+  });
+  if (result.dev) {
+    return res.redirect("/profile/edit?ok=smtp-dev#security");
+  }
+  if (!result.ok) {
+    return res.redirect("/profile/edit?error=" + encodeURIComponent("SMTP failed: " + (result.error || "unknown")) + "#security");
+  }
+  return res.redirect("/profile/edit?ok=smtp-ok#security");
+});
+
+app.post("/settings/2fa/setup", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  try {
+    const secret = generateTotpSecret();
+    await db.query("UPDATE users SET totp_secret = $1, totp_enabled = FALSE WHERE id = $2", [secret, req.user.id]);
+    const otpauth = totpOtpauthUrl(secret, req.user.email);
+    const qr = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(otpauth)}`;
+    req.user.totp_secret = secret;
+    req.user.totp_enabled = false;
+    res.render("edit-profile.ejs", {
+      user: req.user,
+      userlog: req.user,
+      totpSetup: { secret, qr, otpauth },
+      success: null,
+      error: null,
+    });
+  } catch (e) {
+    console.error(e);
+    res.redirect("/profile/edit#security");
+  }
+});
+
+app.post("/settings/2fa/enable", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const code = String(req.body.code || "").trim();
+  try {
+    const r = await db.query("SELECT * FROM users WHERE id = $1", [req.user.id]);
+    const user = r.rows[0];
+    if (!user?.totp_secret || !verifyTotp(user.totp_secret, code)) {
+      const otpauth = user?.totp_secret ? totpOtpauthUrl(user.totp_secret, user.email) : "";
+      const qr = otpauth ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(otpauth)}` : "";
+      return res.render("edit-profile.ejs", {
+        user: req.user,
+        userlog: req.user,
+        totpSetup: user?.totp_secret ? { secret: user.totp_secret, qr, otpauth } : null,
+        error: "Invalid code. Scan the QR again and enter a fresh code.",
+      });
+    }
+    await db.query("UPDATE users SET totp_enabled = TRUE WHERE id = $1", [req.user.id]);
+    const updated = (await db.query("SELECT * FROM users WHERE id = $1", [req.user.id])).rows[0];
+    req.login(updated, () => {
+      res.redirect("/profile/edit?ok=2fa#security");
+    });
+  } catch (e) {
+    res.redirect("/profile/edit#security");
+  }
+});
+
+app.post("/settings/2fa/disable", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const code = String(req.body.code || "").trim();
+  try {
+    const r = await db.query("SELECT * FROM users WHERE id = $1", [req.user.id]);
+    const user = r.rows[0];
+    if (user?.totp_enabled && user.totp_secret && !verifyTotp(user.totp_secret, code)) {
+      return res.redirect("/profile/edit?error=" + encodeURIComponent("Invalid 2FA code.") + "#security");
+    }
+    await db.query("UPDATE users SET totp_enabled = FALSE, totp_secret = NULL WHERE id = $1", [req.user.id]);
+    const updated = (await db.query("SELECT * FROM users WHERE id = $1", [req.user.id])).rows[0];
+    req.login(updated, () => {
+      res.redirect("/profile/edit?ok=2fa-off#security");
+    });
+  } catch (e) {
+    res.redirect("/profile/edit#security");
+  }
+});
+//#endregion
+
+
 app.post("/account/password", async (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
 
   const currentPassword = req.body.current_password || "";
   const newPassword = req.body.new_password || "";
   const confirmPassword = req.body.confirm_password || "";
+  const hasLocalPassword = req.user.password && String(req.user.password).startsWith("$2");
 
-  const renderErr = (msg) =>
-    res.render("edit-profile.ejs", { user: req.user, passwordError: msg });
+  const renderErr = (passwordError) =>
+    res.render("edit-profile.ejs", {
+      user: req.user,
+      userlog: req.user,
+      passwordError,
+    });
+
+  if (!newPassword || newPassword.length < 6) {
+    return renderErr("Password must be at least 6 characters.");
+  }
+  if (newPassword !== confirmPassword) {
+    return renderErr("Passwords do not match.");
+  }
 
   try {
-    const userRes = await db.query("SELECT * FROM users WHERE id = $1", [req.user.id]);
-    if (!userRes.rows.length) return res.redirect("/login");
-    const user = userRes.rows[0];
-
-    if (!user.password || !String(user.password).startsWith("$2")) {
-      return renderErr("Password change is only available for email/password accounts.");
-    }
-    if (!newPassword || newPassword.length < 6) {
-      return renderErr("New password must be at least 6 characters.");
-    }
-    if (newPassword !== confirmPassword) {
-      return renderErr("New passwords do not match.");
+    if (hasLocalPassword) {
+      const match = await bcrypt.compare(currentPassword, req.user.password);
+      if (!match) return renderErr("Current password is incorrect.");
     }
 
-    const match = await bcrypt.compare(currentPassword, user.password);
-    if (!match) return renderErr("Current password is incorrect.");
-
-    const hash = await bcrypt.hash(newPassword, 10);
-    await db.query("UPDATE users SET password = $1 WHERE id = $2", [hash, req.user.id]);
-
-    // Refresh session user object lightly
-    req.user.password = hash;
-
-    res.render("edit-profile.ejs", {
-      user: { ...req.user, password: hash },
-      passwordSuccess: "Password updated successfully.",
+    const hash = await bcrypt.hash(newPassword, saltRounds);
+    const result = await db.query(
+      `UPDATE users SET password = $1 WHERE id = $2 RETURNING *`,
+      [hash, req.user.id]
+    );
+    req.login(result.rows[0], (err) => {
+      if (err) console.error(err);
+      res.render("edit-profile.ejs", {
+        user: result.rows[0],
+        userlog: result.rows[0],
+        passwordSuccess: hasLocalPassword ? "Password updated." : "Password set. You can now log in with email as well.",
+      });
     });
-  } catch (err) {
-    console.error("Change password error:", err);
-    return renderErr("Could not update password. Please try again.");
+  } catch (e) {
+    console.error("password change:", e.message);
+    return renderErr("Could not update password. Try again.");
   }
 });
 
@@ -3776,6 +4312,11 @@ app.get("/profile/edit", (req, res) => {
     "banner-removed": "Banner removed.",
     "photo-removed": "Profile photo removed.",
     photo: "Profile photo updated.",
+    "2fa": "Two-factor authentication enabled.",
+    "2fa-off": "Two-factor authentication disabled.",
+    "verify-sent": "Verification email sent. Check your inbox (or server logs in dev).",
+    "smtp-ok": "Test email sent. Check your inbox.",
+    "smtp-dev": "SMTP is not configured. The test email was printed in the server console instead.",
   };
   res.render("edit-profile.ejs", {
     user: req.user,

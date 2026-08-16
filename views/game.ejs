@@ -108,13 +108,18 @@
       <% } %>
 
 <% if (typeof topStream !== "undefined" && topStream) { %>
-        <div class="twitch-embed-section" style="margin-top: 1.5rem;">
+        <div class="twitch-embed-section twitch-game-stream">
           <div class="twitch-embed-header">
-            <span class="live-badge">LIVE</span>
-            <span class="twitch-embed-title">#1 stream · <%= topStream.user_name %></span>
-            <span class="twitch-embed-meta">
-              <%= topStream.viewer_count?.toLocaleString?.() || topStream.viewer_count %> viewers
-            </span>
+            <div class="twitch-embed-heading">
+              <span class="live-badge"><span class="live-dot"></span> LIVE</span>
+              <div class="twitch-embed-text">
+                <div class="twitch-embed-title">#1 stream · <%= topStream.user_name %></div>
+                <div class="twitch-embed-meta">
+                  <span><%= topStream.viewer_count?.toLocaleString?.() || topStream.viewer_count %> viewers</span>
+                </div>
+              </div>
+            </div>
+            <a href="https://twitch.tv/<%= topStream.user_login %>" target="_blank" rel="noopener" class="twitch-open-btn">Watch on Twitch</a>
           </div>
           <p class="twitch-stream-title"><%= topStream.title %></p>
           <div class="twitch-embed-wrap">
@@ -127,9 +132,6 @@
               title="Top Twitch stream"
             ></iframe>
           </div>
-          <a href="https://twitch.tv/<%= topStream.user_login %>" target="_blank" rel="noopener" class="nav-btn" style="margin-top: 0.75rem; display: inline-block;">
-            Watch on Twitch
-          </a>
         </div>
       <% } %>
 

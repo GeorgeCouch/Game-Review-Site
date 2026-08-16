@@ -27,11 +27,12 @@
           href="/u/<%= profile.username %>/following"
           class="follow-tab<%= listType === 'following' ? ' active' : '' %>"
         >Following</a>
-        <% if (!(typeof userlog !== "undefined" && userlog && userlog.id === profile.id)) { %>
+        <% if (typeof userlog !== "undefined" && userlog && userlog.id !== profile.id) { %>
         <a
           href="/u/<%= profile.username %>/mutual"
           class="follow-tab<%= listType === 'mutual' ? ' active' : '' %>"
-        >Mutual Following</a>
+          title="Mutual Following"
+        >Mutual</a>
         <% } %>
       </div>
 

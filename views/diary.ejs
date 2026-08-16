@@ -7,9 +7,12 @@
   <body>
     <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
 <div class="page-wrapper">
-      <div class="page-header">
+      <div class="page-header" style="margin-bottom: 1.25rem;">
         <div>
-          <h1>
+          <p style="margin: 0 0 0.25rem; color: var(--text-muted); font-size: 0.85rem;">
+            <a href="/u/<%= profile.username %>" style="color: var(--accent); text-decoration: none;">← Back to profile</a>
+          </p>
+          <h1 style="margin: 0; font-size: 1.5rem; font-weight: 800;">
             <% if (typeof userlog !== "undefined" && userlog && userlog.id === profile.id) { %>
               Your Journal
             <% } else { %>

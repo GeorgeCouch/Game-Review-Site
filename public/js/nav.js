@@ -30,25 +30,52 @@
   }
 
   function closeMenu() {
-    if (!burger || !drawer) return;
-    drawer.hidden = true;
-    drawer.setAttribute("aria-hidden", "true");
-    if (backdrop) {
-      backdrop.hidden = true;
-      backdrop.setAttribute("aria-hidden", "true");
-    }
-    burger.setAttribute("aria-expanded", "false");
-    burger.setAttribute("aria-label", "Open menu");
-    burger.classList.remove("is-open");
-    document.body.classList.remove("nav-open");
-    if (lastFocus && lastFocus.focus) lastFocus.focus();
-    else burger.focus();
+    if (!burger || !drawer || drawer.hidden) return;
+    drawer.classList.add("is-closing");
+    if (backdrop) backdrop.classList.add("is-closing");
+    const finish = () => {
+      drawer.hidden = true;
+      drawer.classList.remove("is-closing");
+      drawer.setAttribute("aria-hidden", "true");
+      if (backdrop) {
+        backdrop.hidden = true;
+        backdrop.classList.remove("is-closing");
+        backdrop.setAttribute("aria-hidden", "true");
+      }
+      burger.setAttribute("aria-expanded", "false");
+      burger.setAttribute("aria-label", "Open menu");
+      burger.classList.remove("is-open");
+      document.body.classList.remove("nav-open");
+      drawer.removeEventListener("animationend", finish);
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+      else burger.focus();
+    };
+    drawer.addEventListener("animationend", finish);
+    setTimeout(finish, 200);
   }
 
   if (burger && drawer) {
-    burger.addEventListener("click", () => (drawer.hidden ? openMenu() : closeMenu()));
-    if (backdrop) backdrop.addEventListener("click", closeMenu);
-    drawer.querySelectorAll("a").forEach((a) => a.addEventListener("click", closeMenu));
+    burger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      drawer.hidden ? openMenu() : closeMenu();
+    });
+    if (backdrop) {
+      backdrop.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMenu();
+      });
+    }
+    // Clicks inside the panel should not close the menu (except real navigation links)
+    drawer.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+    drawer.querySelectorAll("a[href]").forEach((a) => {
+      a.addEventListener("click", () => {
+        // allow navigation, then close
+        closeMenu();
+      });
+    });
     window.addEventListener("keydown", (e) => {
       if (drawer.hidden) return;
       if (e.key === "Escape") {
@@ -287,7 +314,7 @@
 
     applyTheme(currentTheme(), { persist: false });
 
-    document.querySelectorAll("#nav-theme-toggle, #nav-theme-toggle-mobile").forEach((el) => {
+    document.querySelectorAll("#nav-theme-toggle, #nav-theme-toggle-mobile, #nav-theme-toggle-mobile-guest").forEach((el) => {
       el.addEventListener("click", toggleTheme);
     });
   })();

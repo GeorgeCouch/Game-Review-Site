@@ -5,12 +5,21 @@
       <%= review.title %> – <%= review.author_display_name || review.author_username || "Review" %> – GameCouch
     </title>
     <%- include('partials/head') %>
-    <meta property="og:title" content="<%= review.title %>     <meta property="og:description" content="<%= (review.notes || '').slice(0, 160) %>  </head>
+    <meta property="og:title" content="<%= review.title %> review" />
+    <meta property="og:description" content="<%= (review.notes || 'A GameCouch review').toString().slice(0, 160).replace(/"/g, '&quot;') %>" />
+  </head>
   <body>
     <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
-<div class="page-wrapper">
+    <div class="page-wrapper review-page">
       <div class="page-header">
         <div>
+          <p class="page-back-link">
+            <% if (review.game_id) { %>
+              <a href="/game/<%= review.game_id %>">← Back to game</a>
+            <% } else { %>
+              <a href="/explore">← Explore</a>
+            <% } %>
+          </p>
           <h1>Review</h1>
           <p>
             <% if (review.author_username) { %>
@@ -21,7 +30,7 @@
         </div>
       </div>
 
-      <div class="game-list" style="max-width: 720px;">
+      <div class="game-list review-page-list">
         <% const i = 0; %>
         <%- include("partials/game.ejs", { i: i }) %>
       </div>
@@ -53,15 +62,20 @@
         }
       }
       function startEditComment(id) {
-        document.getElementById("comment-body-" + id).style.display = "none";
-        document.getElementById("edit-form-" + id).style.display = "block";
+        const body = document.getElementById("comment-body-" + id);
+        const form = document.getElementById("edit-form-" + id);
+        if (body) body.style.display = "none";
+        if (form) form.style.display = "block";
       }
       function cancelEditComment(id) {
-        document.getElementById("comment-body-" + id).style.display = "block";
-        document.getElementById("edit-form-" + id).style.display = "none";
+        const body = document.getElementById("comment-body-" + id);
+        const form = document.getElementById("edit-form-" + id);
+        if (form) form.style.display = "none";
+        if (body) body.style.display = "";
       }
-      document.getElementById("copy-share").addEventListener("click", async () => {
+      document.getElementById("copy-share")?.addEventListener("click", async () => {
         const input = document.getElementById("share-url");
+        if (!input) return;
         try {
           await navigator.clipboard.writeText(input.value);
           document.getElementById("copy-status").textContent = "Link copied!";
@@ -72,6 +86,6 @@
         }
       });
     </script>
-      <script src="/js/nav.js"></script>
+    <script src="/js/nav.js"></script>
   </body>
 </html>

@@ -6,7 +6,7 @@
   </head>
   <body>
     <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
-<div class="page-wrapper">
+<div class="page-wrapper profile-page">
 
       <!-- Live Twitch stream (top of profile) -->
       <% if (typeof liveStream !== "undefined" && liveStream) { %>
@@ -455,8 +455,9 @@
           <% if (typeof userlog !== "undefined" && userlog && userlog.id === profile.id) { %>
             <h2>No reviews yet</h2>
             <p>Share your first game review with the community.</p>
-            <a href="/log" class="nav-btn nav-btn-primary">+ Log</a>
-          <button type="button" class="nav-btn" data-open-review-modal>Review</button>
+            <div class="empty-state-actions">
+              <button type="button" class="nav-btn nav-btn-primary" data-open-review-modal>+ Review</button>
+            </div>
           <% } else { %>
             <h2>No reviews yet</h2>
             <p>This user hasn’t posted any reviews.</p>

@@ -7,6 +7,15 @@
       .replace(/"/g, "&quot;");
   }
 
+
+  async function refreshUnreadBadge() {
+    try {
+      var res = await fetch("/api/notifications", { headers: { Accept: "application/json" } });
+      var data = await res.json();
+      if (res.ok && data && typeof data.unread === "number") setBadge(data.unread);
+    } catch (e) {}
+  }
+
   function setBadge(n) {
     var count = Number(n) || 0;
     document.querySelectorAll(".notif-badge").forEach(function (b) {
@@ -34,10 +43,16 @@
 
   function textFor(n) {
     var name = n.actor_display_name || n.actor_username || "Someone";
-    if (n.type === "like") return "<strong>" + escapeHtml(name) + "</strong> liked your review" + (n.message ? " of " + escapeHtml(n.message) : "");
+    var msg = (n.message || "").trim();
+    // Seed/full-sentence messages already include the actor name — use them as-is
+    if (msg && /liked your review|followed you|commented on/i.test(msg)) {
+      return escapeHtml(msg);
+    }
+    if (n.type === "like") return "<strong>" + escapeHtml(name) + "</strong> liked your review" + (msg ? " of <em>" + escapeHtml(msg) + "</em>" : "");
     if (n.type === "follow") return "<strong>" + escapeHtml(name) + "</strong> followed you";
-    if (n.type === "comment") return "<strong>" + escapeHtml(name) + "</strong> commented on your review" + (n.message ? " of " + escapeHtml(n.message) : "");
-    return "<strong>" + escapeHtml(name) + "</strong> " + escapeHtml(n.message || "interacted with you");
+    if (n.type === "comment") return "<strong>" + escapeHtml(name) + "</strong> commented on your review" + (msg ? " of <em>" + escapeHtml(msg) + "</em>" : "");
+    if (msg) return "<strong>" + escapeHtml(name) + "</strong> " + escapeHtml(msg);
+    return "<strong>" + escapeHtml(name) + "</strong> interacted with you";
   }
 
   function when(n) {
@@ -74,9 +89,13 @@
               escapeHtml((n.actor_display_name || n.actor_username || "?").charAt(0).toUpperCase()) +
               "</div>";
           return (
-            '<a href="' + escapeHtml(hrefFor(n)) + '" class="notif-item nav-notif-item' + (n.read ? "" : " unread") + '" data-id="' + n.id + '">' +
+            '<div class="notif-item nav-notif-item' + (n.read ? "" : " unread") + '" data-id="' + n.id + '">' +
+            '<a href="' + escapeHtml(hrefFor(n)) + '" class="nav-notif-link">' +
             avatar +
-            '<div class="notif-body"><div class="notif-text">' + textFor(n) + '</div><div class="notif-time">' + escapeHtml(when(n)) + "</div></div></a>"
+            '<div class="notif-body"><div class="notif-text">' + textFor(n) + '</div><div class="notif-time">' + escapeHtml(when(n)) + "</div></div>" +
+            "</a>" +
+            '<button type="button" class="nav-notif-dismiss" data-clear-id="' + n.id + '" title="Clear notification" aria-label="Clear notification">&times;</button>' +
+            "</div>"
           );
         })
         .join("");
@@ -128,13 +147,47 @@
     });
 
     list.addEventListener("click", async function (e) {
+      var dismissBtn = e.target.closest(".nav-notif-dismiss, [data-clear-id]");
+      if (dismissBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        var clearId = dismissBtn.getAttribute("data-clear-id") || (dismissBtn.closest("[data-id]") && dismissBtn.closest("[data-id]").getAttribute("data-id"));
+        if (!clearId) return;
+        dismissBtn.disabled = true;
+        try {
+          var cres = await fetch("/api/notifications/" + encodeURIComponent(clearId) + "/clear", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+          });
+          var cdata = {};
+          try { cdata = await cres.json(); } catch (_) {}
+          if (cres.ok && cdata.ok) {
+            var row = dismissBtn.closest(".nav-notif-item");
+            if (row) row.remove();
+            if (typeof cdata.unread === "number") setBadge(cdata.unread);
+            if (!list.querySelector(".nav-notif-item")) {
+              list.innerHTML = '<div class="nav-notif-empty">You’re all caught up</div>';
+            }
+          } else {
+            dismissBtn.disabled = false;
+          }
+        } catch (err) {
+          dismissBtn.disabled = false;
+        }
+        return;
+      }
+
+      var link = e.target.closest(".nav-notif-link");
       var item = e.target.closest(".nav-notif-item");
       if (!item) return;
       var id = item.getAttribute("data-id");
       if (!id) return;
+      // mark read when opening the notification link
       try {
-        var res = await fetch("/api/notifications/" + id + "/read", {
+        var res = await fetch("/api/notifications/" + encodeURIComponent(id) + "/read", {
           method: "POST",
+          credentials: "same-origin",
           headers: { Accept: "application/json" },
         });
         var data = await res.json();
@@ -162,9 +215,11 @@
     }
 
     document.addEventListener("click", function (e) {
+      if (e.target.closest(".nav-notif-dismiss, [data-clear-id]")) return;
       if (!menu.contains(e.target)) close();
     });
   }
 
   document.querySelectorAll(".nav-notif-menu").forEach(setup);
+  refreshUnreadBadge();
 })();

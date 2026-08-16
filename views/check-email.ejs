@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Verify email – GameCouch</title>
+    <%- include('partials/head') %>
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : null, showSort: false }) %>
+    <div class="page-wrapper">
+      <div class="form-card auth-card">
+        <h1>Check your email</h1>
+        <p class="auth-sub">Confirm your address to finish setting up GameCouch</p>
+        <% if (typeof error !== "undefined" && error) { %>
+          <div class="auth-alert auth-alert-error"><%= error %></div>
+        <% } %>
+        <% if (typeof info !== "undefined" && info) { %>
+          <div class="auth-alert auth-alert-info"><%= info %></div>
+        <% } %>
+        <% if (typeof email !== "undefined" && email) { %>
+          <p class="photos-help">We sent a link to <strong><%= email %></strong>.</p>
+        <% } %>
+        <form action="/resend-verification" method="POST" style="margin-top:1rem;">
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input class="form-control" type="email" name="email" value="<%= typeof email !== 'undefined' && email ? email : '' %>" required />
+          </div>
+          <button type="submit" class="btn-submit">Resend verification email</button>
+        </form>
+        <p class="auth-footer"><a href="/login">Back to login</a></p>
+      </div>
+    </div>
+    <script src="/js/nav.js"></script>
+  </body>
+</html>
