@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= statusLabel %> – @<%= profile.username %> – GameCouch</title>
+    <%- include('partials/head') %>
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : null, showSort: false }) %>
+    <div class="page-wrapper page-wrapper-shelf">
+      <div class="list-header">
+        <div>
+          <p class="list-owner">
+            <a href="/u/<%= profile.username %>" style="color: var(--accent); text-decoration: none;">← @<%= profile.username %></a>
+          </p>
+          <h1 class="list-title"><%= statusLabel %></h1>
+          <p class="list-meta">
+            <%= items.length %> game<%= items.length === 1 ? "" : "s" %>
+          </p>
+        </div>
+      </div>
+
+      <% const isOwner = typeof userlog !== "undefined" && userlog && userlog.id === profile.id; %>
+
+      <% if (!items || items.length === 0) { %>
+        <div class="empty-state">
+          <h2>No games here yet</h2>
+          <p>
+            <% if (isOwner) { %>
+              Mark games as <%= statusLabel %> from a game page.
+            <% } else { %>
+              Nothing in this shelf yet.
+            <% } %>
+          </p>
+        </div>
+      <% } else { %>
+        <div
+          class="list-items<%= isOwner ? " list-items-sortable" : "" %>"
+          id="list-items"
+          data-list-id="shelf"
+          data-reorder-url="/u/<%= profile.username %>/shelf/<%= status %>/reorder"
+        >
+          <% items.forEach(function(item, idx) { %>
+            <div
+              class="list-item<%= isOwner ? " is-draggable" : "" %>"
+              data-item-id="<%= item.id %>"
+              <% if (isOwner) { %>draggable="true"<% } %>
+            >
+              <% if (isOwner) { %>
+                <button type="button" class="list-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⠿</button>
+              <% } %>
+              <div class="list-rank"><%= idx + 1 %></div>
+              <a href="/game/<%= item.game_id %>" class="list-item-main">
+                <% if (item.cover_url) { %>
+                  <img src="<%= item.cover_url %>" alt="" class="list-item-cover" draggable="false" />
+                <% } else { %>
+                  <div class="list-item-cover list-item-cover-placeholder">?</div>
+                <% } %>
+                <div>
+                  <div class="list-item-title"><%= item.title || "Unknown game" %></div>
+                  <% if (item.released) { %>
+                    <div class="list-item-notes">Released <%= item.released %></div>
+                  <% } %>
+                </div>
+              </a>
+              <% if (isOwner) { %>
+                <div class="list-item-actions">
+                  <form action="/u/<%= profile.username %>/shelf/<%= status %>/items/<%= item.id %>/delete" method="POST" style="display:inline;">
+                    <button type="submit" class="nav-btn" style="padding: 0.3rem 0.65rem; font-size: 0.8rem;">Remove</button>
+                  </form>
+                </div>
+              <% } %>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+
+    <% if (isOwner && items && items.length) { %>
+    <script>
+      (function () {
+        const listEl = document.getElementById("list-items");
+        if (!listEl || !listEl.classList.contains("list-items-sortable")) return;
+
+        const reorderUrl = listEl.dataset.reorderUrl;
+        let dragEl = null;
+        let touchGhost = null;
+        let touchOffsetY = 0;
+
+        function items() {
+          return [...listEl.querySelectorAll(".list-item")];
+        }
+
+        function updateRanks() {
+          items().forEach((el, idx) => {
+            const rank = el.querySelector(".list-rank");
+            if (rank) rank.textContent = String(idx + 1);
+          });
+        }
+
+        async function saveOrder() {
+          const order = items().map((el) => el.dataset.itemId);
+          try {
+            const res = await fetch(reorderUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({ order }),
+            });
+            if (!res.ok) console.error("Reorder failed", res.status);
+          } catch (err) {
+            console.error("Reorder error", err);
+          }
+        }
+
+        function moveDragElFromY(clientY) {
+          if (!dragEl) return;
+          const others = items().filter((el) => el !== dragEl);
+          let placed = false;
+          for (const item of others) {
+            const rect = item.getBoundingClientRect();
+            const mid = rect.top + rect.height / 2;
+            if (clientY < mid) {
+              listEl.insertBefore(dragEl, item);
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) listEl.appendChild(dragEl);
+        }
+
+        items().forEach((item) => {
+          item.addEventListener("dragstart", (e) => {
+            dragEl = item;
+            item.classList.add("is-dragging");
+            e.dataTransfer.effectAllowed = "move";
+            try { e.dataTransfer.setData("text/plain", item.dataset.itemId); } catch (_) {}
+          });
+          item.addEventListener("dragend", () => {
+            item.classList.remove("is-dragging");
+            dragEl = null;
+            updateRanks();
+            saveOrder();
+          });
+          item.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            if (!dragEl || dragEl === item) return;
+            const rect = item.getBoundingClientRect();
+            const before = e.clientY < rect.top + rect.height / 2;
+            listEl.insertBefore(dragEl, before ? item : item.nextSibling);
+          });
+          item.addEventListener("drop", (e) => e.preventDefault());
+        });
+
+        function onTouchStart(e) {
+          const handle = e.target.closest(".list-drag-handle");
+          if (!handle) return;
+          const item = handle.closest(".list-item");
+          if (!item || !listEl.contains(item)) return;
+          const touch = e.touches[0];
+          dragEl = item;
+          const rect = item.getBoundingClientRect();
+          touchOffsetY = touch.clientY - rect.top;
+          item.classList.add("is-dragging", "is-touch-dragging");
+          touchGhost = item.cloneNode(true);
+          touchGhost.classList.add("list-touch-ghost");
+          touchGhost.style.width = rect.width + "px";
+          touchGhost.style.left = rect.left + "px";
+          touchGhost.style.top = rect.top + "px";
+          document.body.appendChild(touchGhost);
+          e.preventDefault();
+        }
+
+        function onTouchMove(e) {
+          if (!dragEl || !touchGhost) return;
+          const touch = e.touches[0];
+          touchGhost.style.top = touch.clientY - touchOffsetY + "px";
+          moveDragElFromY(touch.clientY);
+          e.preventDefault();
+        }
+
+        function onTouchEnd() {
+          if (!dragEl) return;
+          dragEl.classList.remove("is-dragging", "is-touch-dragging");
+          if (touchGhost) { touchGhost.remove(); touchGhost = null; }
+          dragEl = null;
+          updateRanks();
+          saveOrder();
+        }
+
+        listEl.addEventListener("touchstart", onTouchStart, { passive: false });
+        listEl.addEventListener("touchmove", onTouchMove, { passive: false });
+        listEl.addEventListener("touchend", onTouchEnd);
+        listEl.addEventListener("touchcancel", onTouchEnd);
+      })();
+    </script>
+    <% } %>
+    <script src="/js/nav.js"></script>
+  </body>
+</html>

@@ -2,10 +2,11 @@
   let coverUrl = userInfo[i].cover_url || null;
   let releaseDate = userInfo[i].released || "Unknown";
 
-  // Stars
+  // Stars — nearest half-star steps (e.g. 3.3 → 3.5, 3.2 → 3.0)
   const rating = parseFloat(userInfo[i].rating) || 0;
-  const fullStars = Math.floor(rating);
-  const hasHalf = (rating % 1) >= 0.5;
+  const roundedStars = Math.round(rating * 2) / 2;
+  const fullStars = Math.floor(roundedStars);
+  const hasHalf = (roundedStars % 1) === 0.5;
 
   const reviewId = userInfo[i].id;
   const comments = (typeof commentsByReview !== "undefined" && commentsByReview[reviewId]) ? commentsByReview[reviewId] : [];
@@ -13,54 +14,147 @@
   const isLong = notes.length > 180;
   const likeCount = (typeof likeCountByReview !== "undefined" && likeCountByReview[reviewId]) ? likeCountByReview[reviewId] : 0;
   const isLiked = (typeof likedByUser !== "undefined" && likedByUser && likedByUser.has && likedByUser.has(reviewId));
+  const isReported = (typeof reportedByUser !== "undefined" && reportedByUser && reportedByUser.has && reportedByUser.has(reviewId));
   const hasSpoilers = !!userInfo[i].has_spoilers;
 %>
 
-<div class="game-card" id="review-<%= reviewId %>">
-  <% if (coverUrl) { %>
-    <img class="game-cover" src="<%= coverUrl %>" alt="<%= userInfo[i].title %> cover" loading="lazy" />
-  <% } else { %>
-    <div class="game-cover-placeholder">No cover available</div>
-  <% } %>
+<article class="game-card" id="review-<%= reviewId %>" data-review-id="<%= reviewId %>" data-likes="<%= likeCount %>" data-comments="<%= comments.length %>" data-created="<%= reviewId %>">
+  <div class="game-cover-col">
+    <a href="/game/<%= userInfo[i].game_id %>" class="game-cover-link">
+      <% if (coverUrl) { %>
+        <img class="game-cover" src="<%= coverUrl %>" alt="<%= userInfo[i].title %> cover" loading="lazy" />
+      <% } else { %>
+        <div class="game-cover-placeholder"><%= (userInfo[i].title || "?").charAt(0) %></div>
+      <% } %>
+    </a>
+    <% if (typeof userlog !== "undefined" && userlog && userlog.id === userInfo[i].user_id) { %>
+      <div class="cover-actions">
+        <button
+          type="button"
+          class="action-btn"
+          title="Edit review"
+          data-open-edit-modal
+          data-review-id="<%= userInfo[i].id %>"
+          data-title="<%= (userInfo[i].title || '') %>"
+          data-cover="<%= userInfo[i].cover_url || '' %>"
+          data-completed="<%= userInfo[i].completed || '' %>"
+          data-rating="<%= userInfo[i].rating || '' %>"
+          data-notes="<%= encodeURIComponent(userInfo[i].notes || '') %>"
+          data-spoilers="<%= userInfo[i].has_spoilers ? '1' : '0' %>"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+        <form action="/delete" method="post" onsubmit="return confirm('Delete this review?');">
+          <button class="action-btn delete" name="delete" value="<%= userInfo[i].game_id %>" type="submit" title="Delete review">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </button>
+        </form>
+      </div>
+    <% } else if (typeof userlog !== "undefined" && userlog && userlog.id !== userInfo[i].user_id) { %>
+      <div class="cover-actions">
+        <button
+          type="button"
+          class="action-btn report-btn<%= isReported ? ' reported' : '' %>"
+          data-target-type="review"
+          data-target-id="<%= reviewId %>"
+          data-reported="<%= isReported ? '1' : '0' %>"
+          title="<%= isReported ? 'Reported' : 'Report review' %>"
+        >⚑</button>
+      </div>
+    <% } %>
+  </div>
 
   <div class="game-content">
-    <div class="game-meta">
-      <span>Released: <%= releaseDate %></span>
-      <span>Completed: <%= userInfo[i].completed || "—" %></span>
-      <% if (userInfo[i].author_username) { %>
-        <span>By: <a href="/u/<%= userInfo[i].author_username %>" style="color: var(--accent);"><%= userInfo[i].author_display_name || userInfo[i].author_username %></a></span>
-      <% } else if (userInfo[i].author_email) { %>
-        <span>By: <%= userInfo[i].author_email %></span>
-      <% } %>
+    <div class="game-meta-row">
+      <div class="game-meta">
+        <span class="meta-chip">Released <%= releaseDate %></span>
+        <span class="meta-chip">Completed <%= userInfo[i].completed || "—" %></span>
+        <% if (userInfo[i].author_username) { %>
+          <span class="meta-chip meta-by">By&nbsp;<a href="/u/<%= userInfo[i].author_username %>"><%= userInfo[i].author_display_name || userInfo[i].author_username %></a></span>
+          <% 
+            let authorTitle = userInfo[i].author_title || userInfo[i].author_profile_title || null;
+            if (!authorTitle) {
+              const xp = Number(userInfo[i].author_total_xp) || 0;
+              const titles = [
+                [1, "Newcomer"], [3, "Player"], [5, "Regular"], [8, "Enthusiast"],
+                [12, "Veteran"], [16, "Critic"], [20, "Expert"], [25, "Legend"], [30, "Grandmaster"]
+              ];
+              let lvl = 1, need = 100, remaining = xp;
+              while (remaining >= need && lvl < 50) { remaining -= need; lvl += 1; need = Math.floor(100 * Math.pow(1.2, lvl - 1)); }
+              authorTitle = "Newcomer";
+              for (const [min, t] of titles) { if (lvl >= min) authorTitle = t; }
+            }
+          %>
+          <% if (authorTitle) { %>
+            <span class="meta-chip meta-title rank-<%= String(authorTitle).toLowerCase().replace(/\s+/g, '-') %>"><%= authorTitle %></span>
+          <% } %>
+          <% if (typeof userlog !== "undefined" && userlog && userInfo[i].user_id === userlog.id) { %>
+            <span class="you-badge">You</span>
+          <% } %>
+        <% } else if (userInfo[i].author_email) { %>
+          <span class="meta-chip meta-by">By&nbsp;<%= userInfo[i].author_email %></span>
+        <% } %>
+      </div>
+      <div class="review-like-stack">
+        <% if (typeof userlog !== "undefined" && userlog) { %>
+          <button
+            type="button"
+            class="action-btn like-btn<%= isLiked ? ' liked' : '' %>"
+            data-review-id="<%= reviewId %>"
+            data-liked="<%= isLiked ? '1' : '0' %>"
+            title="<%= isLiked ? 'Unlike' : 'Like' %>"
+          >
+            <svg viewBox="0 0 24 24" fill="<%= isLiked ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+          </button>
+        <% } else { %>
+          <a href="/login" class="action-btn" title="Log in to like">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+          </a>
+        <% } %>
+        <span class="like-count" data-review-id="<%= reviewId %>"><%= likeCount %></span>
+      </div>
     </div>
 
-    <div class="stars">
+    <h2 class="game-title"><a href="/game/<%= userInfo[i].game_id %>"><%= userInfo[i].title %></a></h2>
+
+    <div class="stars" aria-label="Rating <%= rating.toFixed(1) %> out of 5">
       <% for (let s = 1; s <= 5; s++) { %>
         <% if (s <= fullStars) { %>
-          <span class="star">★</span>
+          <span class="star full" aria-hidden="true">★</span>
         <% } else if (s === fullStars + 1 && hasHalf) { %>
-          <span class="star">★</span>
+          <span class="star half" aria-hidden="true">★</span>
         <% } else { %>
-          <span class="star empty">★</span>
+          <span class="star empty" aria-hidden="true">★</span>
         <% } %>
       <% } %>
-      <span style="margin-left: 6px; color: var(--text-muted); font-size: 0.85rem;"><%= rating.toFixed(1) %></span>
+      <span class="rating-num"><%= rating.toFixed(1) %></span>
     </div>
-
-    <h2 class="game-title"><a href="/game/<%= userInfo[i].game_id %>" style="color: inherit;"><%= userInfo[i].title %></a></h2>
 
     <% if (notes && notes.trim()) { %>
     <div class="game-notes-wrap">
       <% if (hasSpoilers) { %>
         <div class="spoiler-block" data-spoiler>
-          <div class="spoiler-badge">Spoilers</div>
+          <div class="spoiler-toolbar">
+            <button type="button" class="spoiler-reveal spoiler-chip">Show Spoilers</button>
+          </div>
           <div class="spoiler-content is-hidden">
             <p class="game-notes<%= isLong ? ' clamped' : '' %>" id="notes-<%= reviewId %>"><%= notes %></p>
             <% if (isLong) { %>
               <button type="button" class="expand-btn" onclick="toggleNotes(<%= reviewId %>)" id="expand-<%= reviewId %>">Read more</button>
             <% } %>
           </div>
-          <button type="button" class="spoiler-reveal nav-btn">Show spoilers</button>
         </div>
       <% } else { %>
         <p class="game-notes<%= isLong ? ' clamped' : '' %>" id="notes-<%= reviewId %>"><%= notes %></p>
@@ -70,122 +164,57 @@
       <% } %>
     </div>
     <% } else { %>
-    <p class="game-notes" style="color: var(--text-muted); font-style: italic; font-size: 0.9rem;">Logged without a written review</p>
+    <p class="game-notes game-notes-empty">Logged without a written review</p>
     <% } %>
 
     <!-- Comments -->
     <div class="comments-section" data-review-id="<%= reviewId %>">
       <div class="comments-header">
-        Comments (<span class="comment-count"><%= comments.length %></span>)
+        <span>Comments</span>
+        <span class="comment-count-pill"><span class="comment-count"><%= comments.length %></span></span>
       </div>
 
       <div class="comments-list">
-        <% comments.forEach(function(c) { %>
-          <div class="comment" id="comment-<%= c.id %>" data-comment-id="<%= c.id %>">
-            <div class="comment-meta">
-              <span class="comment-author">
-                <% if (c.author_username) { %>
-                  <a href="/u/<%= c.author_username %>" style="color: var(--accent);"><%= c.author_display_name || c.author_username %></a>
-                <% } else { %>
-                  <%= c.author_email || "User" %>
-                <% } %>
-              </span>
-              <span class="comment-date"><%= new Date(c.created_at).toLocaleDateString() %></span>
-            </div>
-            <% if (c.has_spoilers) { %>
-              <div class="spoiler-block spoiler-block-sm" data-spoiler>
-                <div class="spoiler-badge">Spoilers</div>
-                <p class="comment-body spoiler-content is-hidden" id="comment-body-<%= c.id %>"><%= c.content %></p>
-                <button type="button" class="spoiler-reveal nav-btn">Show</button>
-              </div>
-            <% } else { %>
-              <p class="comment-body" id="comment-body-<%= c.id %>"><%= c.content %></p>
-            <% } %>
-
-            <% if (typeof userlog !== "undefined" && userlog && userlog.id === c.user_id) { %>
-              <div class="comment-actions">
-                <button type="button" class="comment-action-btn js-edit-comment">Edit</button>
-                <button type="button" class="comment-action-btn danger js-delete-comment">Delete</button>
-              </div>
-              <form class="edit-comment-form" id="edit-form-<%= c.id %>" style="display:none;">
-                <input type="hidden" name="comment_id" value="<%= c.id %>" />
-                <textarea name="content" class="form-control comment-edit-input" rows="2" required><%= c.content %></textarea>
-                <div class="edit-comment-btns">
-                  <button type="submit" class="nav-btn nav-btn-primary" style="padding: 0.3rem 0.75rem; font-size: 0.8rem;">Save</button>
-                  <button type="button" class="nav-btn js-cancel-edit" style="padding: 0.3rem 0.75rem; font-size: 0.8rem;">Cancel</button>
-                </div>
-              </form>
-            <% } %>
-          </div>
-        <% }) %>
+        <%
+          (function() {
+            const list = comments || [];
+            const map = {};
+            list.forEach(function(c) {
+              map[c.id] = Object.assign({}, c, { children: [] });
+            });
+            const roots = [];
+            list.forEach(function(c) {
+              if (c.parent_id && map[c.parent_id]) {
+                map[c.parent_id].children.push(map[c.id]);
+              } else {
+                roots.push(map[c.id]);
+              }
+            });
+            roots.forEach(function(node) {
+        %>
+          <%- include("comment-node", { comment: node, depth: 0, reviewId: reviewId, userlog: typeof userlog !== "undefined" ? userlog : null }) %>
+        <%
+            });
+          })();
+        %>
       </div>
 
       <% if (typeof userlog !== "undefined" && userlog) { %>
         <form class="add-comment-form" data-review-id="<%= reviewId %>">
           <input type="hidden" name="review_id" value="<%= reviewId %>" />
-          <textarea name="content" class="form-control" rows="2" placeholder="Write a comment..." required></textarea>
-          <label class="spoiler-check">
-            <input type="checkbox" name="has_spoilers" value="1" />
-            Spoilers
-          </label>
-          <button type="submit" class="nav-btn nav-btn-primary" style="margin-top: 0.5rem; padding: 0.4rem 1rem; font-size: 0.85rem;">Post Comment</button>
+          <textarea name="content" class="form-control comment-input" rows="2" placeholder="Write a comment..." required></textarea>
+          <div class="comment-form-footer">
+            <label class="spoiler-toggle">
+              <input type="checkbox" name="has_spoilers" value="1" />
+              <span class="spoiler-toggle-ui" aria-hidden="true"></span>
+              <span class="spoiler-toggle-label">Spoilers</span>
+            </label>
+            <button type="submit" class="nav-btn nav-btn-primary comment-submit">Post comment</button>
+          </div>
         </form>
       <% } else { %>
-        <p class="login-to-comment"><a href="/login" style="color: var(--accent);">Log in</a> to leave a comment</p>
+        <p class="login-to-comment"><a href="/login">Log in</a> to leave a comment</p>
       <% } %>
     </div>
   </div>
-
-  <div class="game-actions">
-    <% if (typeof userlog !== "undefined" && userlog) { %>
-      <button
-        type="button"
-        class="action-btn like-btn<%= isLiked ? ' liked' : '' %>"
-        data-review-id="<%= reviewId %>"
-        data-liked="<%= isLiked ? '1' : '0' %>"
-        title="<%= isLiked ? 'Unlike' : 'Like' %>"
-      >
-        <svg viewBox="0 0 24 24" fill="<%= isLiked ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="2">
-          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-        </svg>
-      </button>
-    <% } %>
-    <span class="like-count" data-review-id="<%= reviewId %>"><%= likeCount %></span>
-    <a href="/review/<%= reviewId %>" class="action-btn" title="Open / share review" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-      </svg>
-    </a>
-
-    <% if (typeof userlog !== "undefined" && userlog && userlog.id !== userInfo[i].user_id) { %>
-      <form action="/report" method="post" onsubmit="return confirm('Report this review?');" style="display:inline;">
-        <input type="hidden" name="target_type" value="review" />
-        <input type="hidden" name="target_id" value="<%= reviewId %>" />
-        <input type="hidden" name="reason" value="Reported review" />
-        <button type="submit" class="action-btn" title="Report review" style="font-size: 0.7rem; padding: 0.35rem 0.45rem;">⚑</button>
-      </form>
-    <% } %>
-
-    <% if (typeof userlog !== "undefined" && userlog && userlog.id === userInfo[i].user_id) { %>
-      <form action="/edit" method="post">
-        <button class="action-btn" name="edit" value="<%= userInfo[i].game_id %>" title="Edit">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
-        </button>
-      </form>
-      <form action="/delete" method="post" onsubmit="return confirm('Delete this review?');">
-        <button class="action-btn delete" name="delete" value="<%= userInfo[i].game_id %>" title="Delete">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            <line x1="10" y1="11" x2="10" y2="17"/>
-            <line x1="14" y1="11" x2="14" y2="17"/>
-          </svg>
-        </button>
-      </form>
-    <% } %>
-  </div>
-</div>
+</article>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>GameCouch – Track, review, and share the games you play</title>
+    <%- include('partials/head') %>
+  </head>
+  <body class="landing-body">
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : null, showSort: false }) %>
+
+    <main class="landing">
+      <section class="landing-hero">
+        <div class="landing-hero-copy">
+          <p class="landing-kicker">Your social game journal</p>
+          <h1>Track what you play.<br />Share what you love.</h1>
+          <p class="landing-lead">
+            GameCouch is your social game journal — log plays, rate titles, build lists,
+            climb the leaderboards, and follow friends who game like you do.
+          </p>
+          <div class="landing-cta-row">
+            <% if (typeof userlog !== "undefined" && userlog) { %>
+              <a href="/feed" class="nav-btn nav-btn-primary landing-cta">Go to your feed</a>
+              <a href="/explore" class="nav-btn landing-cta-secondary">Explore reviews</a>
+              <a href="/leaderboards" class="nav-btn landing-cta-secondary">Leaderboards</a>
+            <% } else { %>
+              <a href="/register" class="nav-btn nav-btn-primary landing-cta">Join GameCouch</a>
+              <a href="/explore" class="nav-btn landing-cta-secondary">Explore reviews</a>
+              <a href="/leaderboards" class="nav-btn landing-cta-secondary">Leaderboards</a>
+            <% } %>
+          </div>
+        </div>
+        <div class="landing-hero-visual" aria-hidden="true">
+          <div class="landing-card-stack">
+            <div class="landing-float-card c1">
+              <div class="landing-float-stars">★★★★★</div>
+              <div class="landing-float-title">Logged today</div>
+              <div class="landing-float-sub">Rate · Review · Share</div>
+            </div>
+            <div class="landing-float-card c2">
+              <div class="landing-float-title">Your year in games</div>
+              <div class="landing-float-sub">Stats, journal & lists</div>
+            </div>
+            <div class="landing-float-card c3">
+              <div class="landing-float-title">Follow friends</div>
+              <div class="landing-float-sub">Activity · Shelves · Chat</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="landing-features">
+        <div class="landing-feature">
+          <div class="landing-feature-icon">🎮</div>
+          <h2>Log & rate</h2>
+          <p>Mark Want / Playing / Played, drop a rating, and keep a journal of everything you finish.</p>
+        </div>
+        <div class="landing-feature">
+          <div class="landing-feature-icon">📋</div>
+          <h2>Lists & shelves</h2>
+          <p>Build ranked favorites, backlog queues, and status shelves that update as you play.</p>
+        </div>
+        <div class="landing-feature">
+          <div class="landing-feature-icon">👥</div>
+          <h2>Social feed</h2>
+          <p>Follow friends, like reviews, comment, and see live activity from your circle.</p>
+        </div>
+        <div class="landing-feature">
+          <div class="landing-feature-icon">⚡</div>
+          <h2>XP & levels</h2>
+          <p>Earn XP for reviews, likes, and lists — level up your profile and unlock achievements.</p>
+        </div>
+      </section>
+
+      <section class="landing-teasers">
+        <a href="/leaderboards" class="landing-teaser landing-teaser-boards">
+          <div class="landing-teaser-copy">
+            <p class="landing-teaser-kicker">Community rankings</p>
+            <h2>Live leaderboards</h2>
+            <p>Highest rated games, most reviewed titles, top liked reviewers, and yearly completions — always updating.</p>
+            <span class="landing-teaser-link">View boards →</span>
+          </div>
+          <div class="landing-teaser-visual" aria-hidden="true">
+            <div class="lb-mock">
+              <div class="lb-mock-head">Highest rated</div>
+              <div class="lb-mock-row">
+                <span class="lb-mock-rank">1</span>
+                <span class="lb-mock-bar" style="--w:92%"></span>
+                <span class="lb-mock-score">4.9</span>
+              </div>
+              <div class="lb-mock-row">
+                <span class="lb-mock-rank">2</span>
+                <span class="lb-mock-bar" style="--w:84%"></span>
+                <span class="lb-mock-score">4.7</span>
+              </div>
+              <div class="lb-mock-row">
+                <span class="lb-mock-rank">3</span>
+                <span class="lb-mock-bar" style="--w:76%"></span>
+                <span class="lb-mock-score">4.5</span>
+              </div>
+              <div class="lb-mock-row">
+                <span class="lb-mock-rank">4</span>
+                <span class="lb-mock-bar" style="--w:68%"></span>
+                <span class="lb-mock-score">4.3</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+        <div class="landing-teaser landing-teaser-xp">
+          <div class="landing-teaser-copy">
+            <p class="landing-teaser-kicker">Progression</p>
+            <h2>XP, ranks & achievements</h2>
+            <p>Every review, log, and like fuels your level. Climb ranks and unlock badges on your profile.</p>
+            <% if (typeof userlog !== "undefined" && userlog && userlog.username) { %>
+              <a href="/u/<%= userlog.username %>" class="landing-teaser-link">See your profile →</a>
+            <% } else { %>
+              <a href="/register" class="landing-teaser-link">Start leveling up →</a>
+            <% } %>
+          </div>
+          <div class="landing-teaser-visual" aria-hidden="true">
+            <div class="xp-mock">
+              <div class="xp-mock-top">
+                <span class="xp-mock-level">Lv 12</span>
+                <span class="xp-mock-rank">Enthusiast</span>
+              </div>
+              <div class="xp-mock-bar-track">
+                <div class="xp-mock-bar-fill"></div>
+              </div>
+              <div class="xp-mock-meta">2,840 / 3,200 XP</div>
+              <div class="xp-mock-badges">
+                <span>🎯</span><span>🔥</span><span>📚</span><span>⭐</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <% if (typeof recentReviews !== "undefined" && recentReviews && recentReviews.length) { %>
+        <section class="landing-recent">
+          <div class="landing-section-head">
+            <h2>Fresh from the community</h2>
+            <a href="/explore" class="nav-link">See all</a>
+          </div>
+          <div class="landing-recent-grid">
+            <% recentReviews.forEach(function(g) { %>
+              <a href="/game/<%= g.game_id %>" class="landing-recent-card" title="<%= g.title %>">
+                <% if (g.cover_url) { %>
+                  <img src="<%= g.cover_url %>" alt="" />
+                <% } else { %>
+                  <div class="landing-recent-fallback"><%= (g.title || "?").charAt(0) %></div>
+                <% } %>
+                <span class="landing-recent-rating"><%= g.rating %></span>
+              </a>
+            <% }) %>
+          </div>
+        </section>
+      <% } %>
+
+      <section class="landing-bottom-cta">
+        <h2>Start your game journal</h2>
+        <p>Search thousands of games, log what you play, and build your profile.</p>
+        <% if (typeof userlog !== "undefined" && userlog) { %>
+          <a href="/add" class="nav-btn nav-btn-primary">Write a review</a>
+        <% } else { %>
+          <a href="/register" class="nav-btn nav-btn-primary">Create free account</a>
+        <% } %>
+      </section>
+    </main>
+
+    <script src="/js/nav.js"></script>
+  </body>
+</html>

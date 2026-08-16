@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= year %> on GameCouch – <%= profile.display_name || profile.username %></title>
+    <%- include('partials/head') %>
+    <meta property="og:title" content="<%= profile.display_name || profile.username %>    <meta property="og:description" content="<%= stats.total %>   </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : null, showSort: false }) %>
+
+    <div class="page-wrapper">
+      <div class="yir-hero">
+        <div class="yir-hero-top">
+          <% if (profile.avatar_url) { %>
+            <img src="<%= profile.avatar_url %>" alt="" class="yir-avatar" />
+          <% } else { %>
+            <div class="yir-avatar yir-avatar-fallback">
+              <%= (profile.display_name || profile.username || "?").charAt(0).toUpperCase() %>
+            </div>
+          <% } %>
+          <div>
+            <p class="yir-kicker">Year in Review</p>
+            <h1><%= year %> on GameCouch</h1>
+            <p class="yir-user">
+              <a href="/u/<%= profile.username %>" style="color: var(--accent);">
+                <%= profile.display_name || profile.username %>
+              </a>
+              <% if (profile.profile_title) { %>
+                · <%= profile.profile_title %>
+              <% } %>
+            </p>
+          </div>
+        </div>
+
+        <div class="yir-stats">
+          <div class="yir-stat">
+            <div class="yir-stat-value"><%= stats.total %></div>
+            <div class="yir-stat-label">Games logged</div>
+          </div>
+          <div class="yir-stat">
+            <div class="yir-stat-value"><%= stats.avgRating !== null ? stats.avgRating.toFixed(1) : "—" %></div>
+            <div class="yir-stat-label">Avg rating</div>
+          </div>
+          <div class="yir-stat">
+            <div class="yir-stat-value"><%= stats.fiveStars %></div>
+            <div class="yir-stat-label">5★ games</div>
+          </div>
+          <div class="yir-stat">
+            <div class="yir-stat-value"><%= stats.withNotes %></div>
+            <div class="yir-stat-label">Written reviews</div>
+          </div>
+          <div class="yir-stat">
+            <div class="yir-stat-value"><%= stats.achievementCount %></div>
+            <div class="yir-stat-label">Achievements</div>
+          </div>
+          <div class="yir-stat">
+            <div class="yir-stat-value"><%= stats.listsCreated %></div>
+            <div class="yir-stat-label">Lists created</div>
+          </div>
+        </div>
+      </div>
+
+      <% if (!games.length) { %>
+        <div class="empty-state">
+          <h2>No games logged in <%= year %></h2>
+          <p>Add completion dates when you log games to fill this page.</p>
+          <% if (isOwner) { %>
+            <a href="/log" class="nav-btn nav-btn-primary" style="margin-top: 0.75rem; display: inline-block;">Quick Log</a>
+          <% } %>
+        </div>
+      <% } else { %>
+
+        <!-- Monthly activity -->
+        <section class="yir-section">
+          <h2>Logged by month</h2>
+          <div class="yir-bars">
+            <% months.forEach(function(count, i) { %>
+              <div class="yir-bar-col" title="<%= monthNames[i] %>: <%= count %>">
+                <div class="yir-bar-track">
+                  <div class="yir-bar-fill" style="height: <%= Math.max(count ? 8 : 0, Math.round((count / maxMonth) * 100)) %>%;"></div>
+                </div>
+                <div class="yir-bar-label"><%= monthNames[i] %></div>
+                <div class="yir-bar-count"><%= count || "" %></div>
+              </div>
+            <% }) %>
+          </div>
+        </section>
+
+        <!-- Top rated -->
+        <% if (topRated.length) { %>
+          <section class="yir-section">
+            <h2>Highest rated</h2>
+            <div class="yir-top-list">
+              <% topRated.forEach(function(g, idx) { %>
+                <a href="/game/<%= g.game_id %>" class="yir-top-item">
+                  <span class="yir-rank"><%= idx + 1 %></span>
+                  <% if (g.cover_url) { %>
+                    <img src="<%= g.cover_url %>" alt="" class="yir-cover" />
+                  <% } else { %>
+                    <div class="yir-cover yir-cover-fallback">?</div>
+                  <% } %>
+                  <div class="yir-top-meta">
+                    <div class="yir-top-title"><%= g.title %></div>
+                    <div class="yir-top-sub">
+                      <%= g.rating %>/5
+                      <% if (g.completed) { %> · <%= g.completed %> <% } %>
+                    </div>
+                  </div>
+                </a>
+              <% }) %>
+            </div>
+          </section>
+        <% } %>
+
+        <!-- Achievements -->
+        <% if (yearAchievements.length) { %>
+          <section class="yir-section">
+            <h2>Achievements unlocked</h2>
+            <div class="achievements-grid">
+              <% yearAchievements.forEach(function(a) { %>
+                <div class="achievement-card unlocked">
+                  <div class="achievement-icon"><%= a.icon %></div>
+                  <div class="achievement-info">
+                    <div class="achievement-title"><%= a.title %></div>
+                    <div class="achievement-desc"><%= a.description %></div>
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          </section>
+        <% } %>
+
+        <!-- All games -->
+        <section class="yir-section">
+          <h2>All <%= year %> logs</h2>
+          <div class="yir-grid">
+            <% games.forEach(function(g) { %>
+              <a href="/review/<%= g.id %>" class="yir-grid-item" title="<%= g.title %>">
+                <% if (g.cover_url) { %>
+                  <img src="<%= g.cover_url %>" alt="<%= g.title %>" />
+                <% } else { %>
+                  <div class="yir-grid-fallback"><%= (g.title || "?").charAt(0) %></div>
+                <% } %>
+                <span class="yir-grid-rating"><%= g.rating %></span>
+              </a>
+            <% }) %>
+          </div>
+        </section>
+      <% } %>
+
+      <div class="share-box" style="margin-top: 2rem;">
+        <label class="form-label">Share this year</label>
+        <div class="share-row">
+          <input class="form-control" type="text" id="yir-share-url" value="<%= shareUrl %>" readonly />
+          <button type="button" class="nav-btn nav-btn-primary" id="yir-copy">Copy</button>
+        </div>
+        <div id="yir-copy-status" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;"></div>
+      </div>
+    </div>
+
+    <script src="/js/nav.js"></script>
+    <script>
+      document.getElementById("yir-copy").addEventListener("click", async () => {
+        const input = document.getElementById("yir-share-url");
+        try {
+          await navigator.clipboard.writeText(input.value);
+          document.getElementById("yir-copy-status").textContent = "Link copied!";
+        } catch (e) {
+          input.select();
+          document.execCommand("copy");
+          document.getElementById("yir-copy-status").textContent = "Link copied!";
+        }
+      });
+    </script>
+  </body>
+</html>

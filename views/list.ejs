@@ -1,17 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title><%= list.title %> – GameCouch</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-      crossorigin="anonymous"
-    />
-    <link rel="stylesheet" href="/styles/styles.css" />
+    <%- include('partials/head') %>
   </head>
   <body>
     <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
@@ -30,12 +21,17 @@
           <% } %>
           <p class="list-meta">
             <%= items.length %> game<%= items.length === 1 ? "" : "s" %>
-            <% if (list.is_ranked) { %> · Ranked <% } %>
+            <% if (list.is_ranked) { %> · Numbered <% } %>
           </p>
         </div>
 
         <% if (typeof userlog !== "undefined" && userlog && userlog.id === list.user_id) { %>
           <div class="list-owner-actions">
+            <form action="/lists/<%= list.id %>/toggle-numbered" method="POST">
+              <button type="submit" class="nav-btn">
+                <%= list.is_ranked ? "Hide numbers" : "Make numbered" %>
+              </button>
+            </form>
             <form action="/lists/<%= list.id %>/delete" method="POST" onsubmit="return confirm('Delete this entire list?');">
               <button type="submit" class="nav-btn" style="color: var(--danger); border-color: var(--danger);">Delete list</button>
             </form>
@@ -70,15 +66,18 @@
           </p>
         </div>
       <% } else { %>
-        <div class="list-items">
+        <div class="list-items<%= (typeof userlog !== "undefined" && userlog && userlog.id === list.user_id) ? " list-items-sortable" : "" %>" id="list-items" data-list-id="<%= list.id %>">
           <% items.forEach(function(item, idx) { %>
-            <div class="list-item">
+            <div class="list-item<%= (typeof userlog !== "undefined" && userlog && userlog.id === list.user_id) ? " is-draggable" : "" %>" data-item-id="<%= item.id %>" <% if (typeof userlog !== "undefined" && userlog && userlog.id === list.user_id) { %>draggable="true"<% } %>>
+              <% if (typeof userlog !== "undefined" && userlog && userlog.id === list.user_id) { %>
+                <button type="button" class="list-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⠿</button>
+              <% } %>
               <% if (list.is_ranked) { %>
                 <div class="list-rank"><%= idx + 1 %></div>
               <% } %>
               <a href="/game/<%= item.game_id %>" class="list-item-main">
                 <% if (item.cover_url) { %>
-                  <img src="<%= item.cover_url %>" alt="" class="list-item-cover" />
+                  <img src="<%= item.cover_url %>" alt="" class="list-item-cover" draggable="false" />
                 <% } else { %>
                   <div class="list-item-cover list-item-cover-placeholder">?</div>
                 <% } %>
@@ -91,16 +90,6 @@
               </a>
               <% if (typeof userlog !== "undefined" && userlog && userlog.id === list.user_id) { %>
                 <div class="list-item-actions">
-                  <% if (list.is_ranked) { %>
-                    <form action="/lists/<%= list.id %>/items/<%= item.id %>/move" method="POST" style="display:inline;">
-                      <input type="hidden" name="direction" value="up" />
-                      <button type="submit" class="nav-btn list-move-btn" title="Move up" <%= idx === 0 ? "disabled" : "" %>>▲</button>
-                    </form>
-                    <form action="/lists/<%= list.id %>/items/<%= item.id %>/move" method="POST" style="display:inline;">
-                      <input type="hidden" name="direction" value="down" />
-                      <button type="submit" class="nav-btn list-move-btn" title="Move down" <%= idx === items.length - 1 ? "disabled" : "" %>>▼</button>
-                    </form>
-                  <% } %>
                   <form action="/lists/<%= list.id %>/items/<%= item.id %>/delete" method="POST" style="display:inline;">
                     <button type="submit" class="nav-btn" style="padding: 0.3rem 0.65rem; font-size: 0.8rem;">Remove</button>
                   </form>
@@ -173,6 +162,144 @@
       });
     </script>
     <% } %>
+      
+    <script>
+      (function () {
+        const listEl = document.getElementById("list-items");
+        if (!listEl || !listEl.classList.contains("list-items-sortable")) return;
+
+        const listId = listEl.dataset.listId;
+        let dragEl = null;
+        let touchGhost = null;
+        let touchOffsetY = 0;
+        let lastTouchY = 0;
+
+        function items() {
+          return [...listEl.querySelectorAll(".list-item")];
+        }
+
+        function updateRanks() {
+          items().forEach((el, idx) => {
+            const rank = el.querySelector(".list-rank");
+            if (rank) rank.textContent = String(idx + 1);
+          });
+        }
+
+        async function saveOrder() {
+          const order = items().map((el) => el.dataset.itemId);
+          try {
+            const res = await fetch("/lists/" + listId + "/reorder", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({ order }),
+            });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              console.error("Reorder failed", data.error || res.status);
+            }
+          } catch (err) {
+            console.error("Reorder error", err);
+          }
+        }
+
+        function moveDragElFromY(clientY) {
+          if (!dragEl) return;
+          const others = items().filter((el) => el !== dragEl);
+          let placed = false;
+          for (const item of others) {
+            const rect = item.getBoundingClientRect();
+            const mid = rect.top + rect.height / 2;
+            if (clientY < mid) {
+              listEl.insertBefore(dragEl, item);
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) listEl.appendChild(dragEl);
+        }
+
+        // Desktop HTML5 DnD
+        items().forEach((item) => {
+          item.addEventListener("dragstart", (e) => {
+            // Ignore if starting from a button/link that shouldn't drag the row via native only on handle preferred
+            dragEl = item;
+            item.classList.add("is-dragging");
+            e.dataTransfer.effectAllowed = "move";
+            try {
+              e.dataTransfer.setData("text/plain", item.dataset.itemId);
+            } catch (_) {}
+          });
+          item.addEventListener("dragend", () => {
+            item.classList.remove("is-dragging");
+            dragEl = null;
+            updateRanks();
+            saveOrder();
+          });
+          item.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            if (!dragEl || dragEl === item) return;
+            const rect = item.getBoundingClientRect();
+            const before = e.clientY < rect.top + rect.height / 2;
+            listEl.insertBefore(dragEl, before ? item : item.nextSibling);
+          });
+          item.addEventListener("drop", (e) => e.preventDefault());
+        });
+
+        // Touch support (handle-based to avoid scrolling conflicts)
+        function onTouchStart(e) {
+          const handle = e.target.closest(".list-drag-handle");
+          if (!handle) return;
+          const item = handle.closest(".list-item");
+          if (!item || !listEl.contains(item)) return;
+
+          const touch = e.touches[0];
+          dragEl = item;
+          lastTouchY = touch.clientY;
+          const rect = item.getBoundingClientRect();
+          touchOffsetY = touch.clientY - rect.top;
+
+          item.classList.add("is-dragging", "is-touch-dragging");
+
+          touchGhost = item.cloneNode(true);
+          touchGhost.classList.add("list-touch-ghost");
+          touchGhost.style.width = rect.width + "px";
+          touchGhost.style.left = rect.left + "px";
+          touchGhost.style.top = rect.top + "px";
+          document.body.appendChild(touchGhost);
+
+          // Prevent page scroll while dragging
+          e.preventDefault();
+        }
+
+        function onTouchMove(e) {
+          if (!dragEl || !touchGhost) return;
+          const touch = e.touches[0];
+          lastTouchY = touch.clientY;
+          touchGhost.style.top = touch.clientY - touchOffsetY + "px";
+          moveDragElFromY(touch.clientY);
+          e.preventDefault();
+        }
+
+        function onTouchEnd() {
+          if (!dragEl) return;
+          dragEl.classList.remove("is-dragging", "is-touch-dragging");
+          if (touchGhost) {
+            touchGhost.remove();
+            touchGhost = null;
+          }
+          dragEl = null;
+          updateRanks();
+          saveOrder();
+        }
+
+        listEl.addEventListener("touchstart", onTouchStart, { passive: false });
+        listEl.addEventListener("touchmove", onTouchMove, { passive: false });
+        listEl.addEventListener("touchend", onTouchEnd);
+        listEl.addEventListener("touchcancel", onTouchEnd);
+      })();
+    </script>
+
       <script src="/js/nav.js"></script>
   </body>
 </html>

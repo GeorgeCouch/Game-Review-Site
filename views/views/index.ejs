@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>GameCouch</title>
+    <%- include('partials/head') %>
+  </head>
+  <body>
+    <!-- Navbar -->
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: true }) %>
+<div class="page-wrapper">
+      <div class="page-header">
+        <div>
+          <h1><%= (typeof feedMode !== "undefined" && feedMode === "feed") ? "Your Feed" : "Explore" %></h1>
+          <p>
+            <% if (typeof feedMode !== "undefined" && feedMode === "feed") { %>
+              Reviews from you and people you follow
+            <% } else { %>
+              Discover reviews from the community
+            <% } %>
+            <% if (userInfo && userInfo.length) { %>
+              · <%= userInfo.length %> review<%= userInfo.length === 1 ? "" : "s" %>
+            <% } %>
+          </p>
+        </div>
+      </div>
+
+      <% if (!userInfo || userInfo.length === 0) { %>
+        <div class="empty-state">
+          <% if (typeof feedMode !== "undefined" && feedMode === "feed") { %>
+            <h2>Your feed is empty</h2>
+            <p>Follow some people or add your first review to get started.</p>
+            <div style="display:flex; gap:0.75rem; justify-content:center; flex-wrap:wrap;">
+              <a href="/explore" class="nav-btn">Explore reviews</a>
+              <a href="/add" class="nav-btn nav-btn-primary">+ Add Review</a>
+            </div>
+          <% } else { %>
+            <h2>No reviews yet</h2>
+            <p>Be the first to add a game review.</p>
+            <a href="/add" class="nav-btn nav-btn-primary">+ Add Review</a>
+          <% } %>
+        </div>
+      <% } else { %>
+        <div class="game-list">
+          <% for (let i = 0; i < userInfo.length; i++) { %>
+            <%- include("partials/game.ejs", { i: i }) %>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+<script>
+      function toggleNotes(id) {
+        const notes = document.getElementById("notes-" + id);
+        const btn = document.getElementById("expand-" + id);
+        if (notes.classList.contains("clamped")) {
+          notes.classList.remove("clamped");
+          btn.textContent = "Show less";
+        } else {
+          notes.classList.add("clamped");
+          btn.textContent = "Read more";
+        }
+      }
+
+      function startEditComment(id) {
+        document.getElementById("comment-body-" + id).style.display = "none";
+        document.getElementById("edit-form-" + id).style.display = "block";
+        const actions = document.querySelector("#comment-" + id + " .comment-actions");
+        if (actions) actions.style.display = "none";
+      }
+
+      function cancelEditComment(id) {
+        document.getElementById("comment-body-" + id).style.display = "block";
+        document.getElementById("edit-form-" + id).style.display = "none";
+        const actions = document.querySelector("#comment-" + id + " .comment-actions");
+        if (actions) actions.style.display = "flex";
+      }
+    </script>
+      <script src="/js/likes.js"></script>
+    <script src="/js/comments.js"></script>
+      <script src="/js/nav.js"></script>
+  </body>
+</html>

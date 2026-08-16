@@ -1,0 +1,100 @@
+<nav class="site-nav fixed top-0 inset-x-0 z-[1040]" aria-label="Main" style="padding-top: env(safe-area-inset-top, 0px);">
+  <div class="site-nav-bar mx-auto flex min-h-[64px] w-full max-w-[1100px] items-center justify-between gap-3 px-3 sm:px-4">
+    <a class="navbar-brand inline-flex items-center gap-2 text-[1.15rem] font-extrabold tracking-tight text-gc-text" href="/" aria-label="GameCouch home">
+      <img src="/favicon.svg" alt="" class="navbar-logo h-7 w-7 rounded-lg" width="28" height="28" />
+      <span class="brand-text">Game<span class="brand-accent">Couch</span></span>
+    </a>
+
+    <div class="nav-desktop hidden items-center gap-1 lg:flex flex-nowrap" role="navigation" aria-label="Primary">
+      <a href="/" class="nav-btn">Feed</a>
+      <a href="/activity" class="nav-btn">Activity</a>
+      <a href="/explore" class="nav-btn">Explore</a>
+      <a href="/search" class="nav-btn">Search</a>
+      <a href="/leaderboards" class="nav-btn">Boards</a>
+      <a href="/messages" class="nav-btn">Messages</a>
+
+      <% if (typeof showSort !== "undefined" && showSort) { %>
+        <div class="relative" id="sort-menu-wrap">
+          <button type="button" class="nav-btn" id="sort-menu-btn" aria-expanded="false" aria-haspopup="true" aria-controls="sort-menu">
+            Sort
+          </button>
+          <div id="sort-menu" class="absolute right-0 z-50 mt-2 hidden min-w-[10rem] overflow-hidden rounded-xl border border-white/10 bg-gc-surface p-1 shadow-gc" role="menu" hidden>
+            <form action="/sort" method="post" class="flex flex-col gap-0.5">
+              <button class="rounded-lg px-3 py-2 text-left text-sm font-medium text-gc-text hover:bg-gc-accent/15" type="submit" name="sort" value="rating" role="menuitem">Rating</button>
+              <button class="rounded-lg px-3 py-2 text-left text-sm font-medium text-gc-text hover:bg-gc-accent/15" type="submit" name="sort" value="completed" role="menuitem">Completed</button>
+              <button class="rounded-lg px-3 py-2 text-left text-sm font-medium text-gc-text hover:bg-gc-accent/15" type="submit" name="sort" value="released" role="menuitem">Released</button>
+            </form>
+          </div>
+        </div>
+      <% } %>
+
+      <% if (typeof userlog !== "undefined" && userlog) { %>
+        <a href="/log" class="nav-btn nav-btn-primary">+ Log</a>
+        <a href="/add" class="nav-btn">Review</a>
+        <a href="/notifications" class="nav-btn notif-nav" aria-label="Notifications">
+          Alerts
+          <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
+            <span class="notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
+          <% } %>
+        </a>
+        <% if (userlog.username) { %>
+          <a href="/u/<%= userlog.username %>" class="nav-btn">Profile</a>
+        <% } else { %>
+          <a href="/profile/edit" class="nav-btn">Username</a>
+        <% } %>
+        <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
+          <a href="/admin" class="nav-btn">Admin</a>
+        <% } %>
+        <a href="/logout" class="nav-btn">Logout</a>
+      <% } else { %>
+        <a href="/login" class="nav-btn nav-btn-primary">Login</a>
+      <% } %>
+    </div>
+
+    <div class="nav-mobile-tools flex items-center gap-2 lg:hidden">
+      <% if (typeof userlog !== "undefined" && userlog) { %>
+        <a href="/log" class="nav-btn nav-btn-primary nav-mobile-log">+ Log</a>
+        <a href="/notifications" class="nav-btn notif-nav" aria-label="Notifications">
+          <span aria-hidden="true">🔔</span>
+          <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
+            <span class="notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
+          <% } %>
+        </a>
+      <% } else { %>
+        <a href="/login" class="nav-btn nav-btn-primary">Login</a>
+      <% } %>
+      <button type="button" class="nav-burger" id="nav-burger" aria-label="Open menu" aria-expanded="false" aria-controls="nav-drawer" aria-haspopup="true">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="nav-drawer border-t border-white/10 bg-gc-bg/95" id="nav-drawer" role="dialog" aria-modal="true" aria-label="Site menu" hidden>
+    <div class="nav-drawer-inner mx-auto flex max-w-[1100px] flex-col gap-1 p-3" role="navigation" aria-label="Mobile">
+      <a href="/" class="nav-drawer-link">Feed</a>
+      <a href="/activity" class="nav-drawer-link">Activity</a>
+      <a href="/explore" class="nav-drawer-link">Explore</a>
+      <a href="/search" class="nav-drawer-link">Search</a>
+      <a href="/leaderboards" class="nav-drawer-link">Leaderboards</a>
+      <a href="/messages" class="nav-drawer-link">Messages</a>
+      <% if (typeof userlog !== "undefined" && userlog) { %>
+        <a href="/log" class="nav-drawer-link">Quick Log</a>
+        <a href="/add" class="nav-drawer-link">Write Review</a>
+        <a href="/notifications" class="nav-drawer-link">Notifications</a>
+        <% if (userlog.username) { %>
+          <a href="/u/<%= userlog.username %>" class="nav-drawer-link">Profile</a>
+        <% } %>
+        <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
+          <a href="/admin" class="nav-drawer-link">Admin</a>
+        <% } %>
+        <a href="/logout" class="nav-drawer-link">Logout</a>
+      <% } else { %>
+        <a href="/login" class="nav-drawer-link">Login</a>
+        <a href="/register" class="nav-drawer-link">Register</a>
+      <% } %>
+    </div>
+  </div>
+</nav>
+<div class="nav-backdrop" id="nav-backdrop" hidden tabindex="-1" aria-hidden="true"></div>

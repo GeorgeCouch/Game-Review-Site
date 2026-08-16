@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Reviews by <%= profile.display_name || profile.username %> – GameCouch</title>
+    <%- include('partials/head') %>
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : null, showSort: false }) %>
+    <div class="page-wrapper">
+      <div class="page-header" style="margin-bottom: 1.25rem;">
+        <div>
+          <p style="margin: 0 0 0.25rem; color: var(--text-muted); font-size: 0.85rem;">
+            <a href="/u/<%= profile.username %>" style="color: var(--accent); text-decoration: none;">← Back to profile</a>
+          </p>
+          <h1 style="margin: 0; font-size: 1.5rem; font-weight: 800;">
+            Reviews by <%= profile.display_name || profile.username %>
+          </h1>
+          <p style="margin: 0.3rem 0 0; color: var(--text-muted); font-size: 0.9rem;">
+            <%= total %> review<%= total === 1 ? "" : "s" %>
+          </p>
+        </div>
+      </div>
+
+      <div class="reviews-sort-bar">
+        <span class="reviews-sort-label">Sort by</span>
+        <a href="/u/<%= profile.username %>/reviews?sort=likes&page=1" class="sort-chip<%= sort === 'likes' ? ' active' : '' %>">Most likes</a>
+        <a href="/u/<%= profile.username %>/reviews?sort=comments&page=1" class="sort-chip<%= sort === 'comments' ? ' active' : '' %>">Most comments</a>
+        <a href="/u/<%= profile.username %>/reviews?sort=recent&page=1" class="sort-chip<%= sort === 'recent' ? ' active' : '' %>">Most recent</a>
+      </div>
+
+      <% if (!userInfo || userInfo.length === 0) { %>
+        <div class="empty-state">
+          <h2>No reviews yet</h2>
+          <p>This user hasn’t posted any reviews.</p>
+        </div>
+      <% } else { %>
+        <div class="game-list">
+          <% for (let i = 0; i < userInfo.length; i++) { %>
+            <%- include("partials/game.ejs", { i: i }) %>
+          <% } %>
+        </div>
+
+        <% if (totalPages > 1) { %>
+          <nav class="pagination" aria-label="Reviews pages">
+            <% if (page > 1) { %>
+              <a class="nav-btn" href="/u/<%= profile.username %>/reviews?sort=<%= sort %>&page=<%= page - 1 %>">← Prev</a>
+            <% } else { %>
+              <span class="nav-btn" style="opacity:0.4; pointer-events:none;">← Prev</span>
+            <% } %>
+            <span class="pagination-info">Page <%= page %> of <%= totalPages %></span>
+            <% if (page < totalPages) { %>
+              <a class="nav-btn" href="/u/<%= profile.username %>/reviews?sort=<%= sort %>&page=<%= page + 1 %>">Next →</a>
+            <% } else { %>
+              <span class="nav-btn" style="opacity:0.4; pointer-events:none;">Next →</span>
+            <% } %>
+          </nav>
+        <% } %>
+      <% } %>
+    </div>
+    <script>
+      function toggleNotes(id) {
+        const notes = document.getElementById("notes-" + id);
+        const btn = document.getElementById("expand-" + id);
+        if (!notes || !btn) return;
+        if (notes.classList.contains("clamped")) {
+          notes.classList.remove("clamped");
+          btn.textContent = "Show less";
+        } else {
+          notes.classList.add("clamped");
+          btn.textContent = "Read more";
+        }
+      }
+    </script>
+    <script src="/js/likes.js"></script>
+    <script src="/js/report.js"></script>
+    <script>
+      
+    </script>
+    <script src="/js/comments.js"></script>
+    <script src="/js/nav.js"></script>
+  </body>
+</html>

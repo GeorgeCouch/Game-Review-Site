@@ -1,0 +1,125 @@
+<%
+  const c = comment;
+  const childList = (c && c.children) || [];
+  const threadDepth = (typeof depth === "number" ? depth : 0);
+  const canReply = typeof userlog !== "undefined" && userlog;
+  const isOwner = canReply && userlog.id === c.user_id;
+  let resolvedTitle = c.author_profile_title || null;
+  if (!resolvedTitle) {
+    const xp = Number(c.author_total_xp) || 0;
+    const titles = [
+      [1, "Newcomer"], [3, "Player"], [5, "Regular"], [8, "Enthusiast"],
+      [12, "Veteran"], [16, "Critic"], [20, "Expert"], [25, "Legend"], [30, "Grandmaster"]
+    ];
+    let lvl = 1, need = 100, remaining = xp;
+    while (remaining >= need && lvl < 50) { remaining -= need; lvl += 1; need = Math.floor(100 * Math.pow(1.2, lvl - 1)); }
+    resolvedTitle = "Newcomer";
+    for (const [min, t] of titles) { if (lvl >= min) resolvedTitle = t; }
+  }
+%>
+<div class="comment comment-thread-node" id="comment-<%= c.id %>" data-comment-id="<%= c.id %>" data-parent-id="<%= c.parent_id || '' %>" data-depth="<%= threadDepth %>">
+  <div class="comment-main">
+    <div class="comment-meta">
+      <span class="comment-author">
+        <% if (c.author_username) { %>
+          <a href="/u/<%= c.author_username %>"><%= c.author_display_name || c.author_username %></a>
+        <% } else { %>
+          <%= c.author_email || "User" %>
+        <% } %>
+        <% if (resolvedTitle) { %>
+          <span class="comment-user-title rank-<%= String(resolvedTitle).toLowerCase().replace(/\s+/g, '-') %>"><%= resolvedTitle %></span>
+        <% } %>
+        <% if (isOwner) { %>
+          <span class="you-badge you-badge-sm">You</span>
+        <% } %>
+      </span>
+      <span class="comment-date"><%= new Date(c.created_at).toLocaleDateString() %></span>
+    </div>
+
+    <div class="comment-body-row">
+      <% if (c.has_spoilers) { %>
+        <div class="spoiler-block spoiler-block-sm" data-spoiler>
+          <div class="spoiler-toolbar">
+            <button type="button" class="spoiler-reveal spoiler-chip">Show Spoilers</button>
+          </div>
+          <p class="comment-body spoiler-content is-hidden" id="comment-body-<%= c.id %>"><%= c.content %></p>
+        </div>
+      <% } else { %>
+        <p class="comment-body" id="comment-body-<%= c.id %>"><%= c.content %></p>
+      <% } %>
+
+    </div>
+
+    <div class="comment-footer-actions">
+      <% if (canReply && threadDepth < 6) { %>
+        <button type="button" class="comment-reply-btn js-reply-comment">Reply</button>
+      <% } %>
+      <% if (childList.length) { %>
+        <button type="button" class="comment-collapse-btn js-toggle-thread" aria-expanded="true">
+          Hide <%= childList.length %> repl<%= childList.length === 1 ? "y" : "ies" %>
+        </button>
+      <% } %>
+      <% if (isOwner) { %>
+        <div class="comment-actions comment-actions-end">
+          <button type="button" class="comment-icon-btn js-edit-comment" title="Edit comment">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button type="button" class="comment-icon-btn danger js-delete-comment" title="Delete comment">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </button>
+        </div>
+      <% } %>
+    </div>
+
+    <% if (isOwner) { %>
+      <form class="edit-comment-form" id="edit-form-<%= c.id %>" style="display:none;">
+        <input type="hidden" name="comment_id" value="<%= c.id %>" />
+        <textarea name="content" class="form-control comment-edit-input" rows="2" required><%= c.content %></textarea>
+        <div class="edit-comment-footer">
+          <label class="spoiler-toggle">
+            <input type="checkbox" name="has_spoilers" value="1" <%= c.has_spoilers ? "checked" : "" %> />
+            <span class="spoiler-toggle-ui" aria-hidden="true"></span>
+            <span class="spoiler-toggle-label">Spoilers</span>
+          </label>
+          <div class="edit-comment-btns">
+            <button type="submit" class="nav-btn nav-btn-primary comment-save-btn">Save</button>
+            <button type="button" class="nav-btn js-cancel-edit">Cancel</button>
+          </div>
+        </div>
+      </form>
+    <% } %>
+
+    <% if (canReply) { %>
+      <form class="reply-comment-form" data-parent-id="<%= c.id %>" data-review-id="<%= reviewId %>" style="display:none;">
+        <input type="hidden" name="review_id" value="<%= reviewId %>" />
+        <input type="hidden" name="parent_id" value="<%= c.id %>" />
+        <textarea name="content" class="form-control comment-input" rows="2" placeholder="Write a reply..." required></textarea>
+        <div class="comment-form-footer">
+          <label class="spoiler-toggle">
+            <input type="checkbox" name="has_spoilers" value="1" />
+            <span class="spoiler-toggle-ui" aria-hidden="true"></span>
+            <span class="spoiler-toggle-label">Spoilers</span>
+          </label>
+          <div class="edit-comment-btns">
+            <button type="submit" class="nav-btn nav-btn-primary">Reply</button>
+            <button type="button" class="nav-btn js-cancel-reply">Cancel</button>
+          </div>
+        </div>
+      </form>
+    <% } %>
+  </div>
+
+  <div class="comment-replies">
+    <% childList.forEach(function(child) { %>
+      <%- include("comment-node", { comment: child, depth: threadDepth + 1, reviewId: reviewId, userlog: typeof userlog !== "undefined" ? userlog : null }) %>
+    <% }) %>
+  </div>
+</div>

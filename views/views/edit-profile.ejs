@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Edit Profile – GameCouch</title>
+    <%- include('partials/head') %>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css"
+    />
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
+<div class="page-wrapper">
+      <div class="form-card" style="max-width: 520px;">
+        <h1>Edit Profile</h1>
+
+        <% if (typeof error !== "undefined" && error) { %>
+          <div class="alert alert-danger" style="background: rgba(255,92,92,0.15); border: 1px solid var(--danger); color: #ff8a8a; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1.25rem;">
+            <%= error %>
+          </div>
+        <% } %>
+
+        <% if (typeof success !== "undefined" && success) { %>
+          <div class="alert" style="background: rgba(79,140,255,0.15); border: 1px solid var(--accent); color: #8bb4ff; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1.25rem;">
+            <%= success %>
+          </div>
+        <% } %>
+
+        <form action="/profile/edit" method="POST">
+          <div class="mb-3">
+            <label class="form-label">Username</label>
+            <div class="input-group">
+              <span class="input-group-text" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 10px 0 0 10px;">@</span>
+              <input
+                class="form-control"
+                type="text"
+                name="username"
+                value="<%= user.username || '' %>"
+                pattern="[a-z][a-z0-9_]{2,29}"
+                title="3–30 characters. Start with a letter. Only lowercase letters, numbers, and underscores."
+                required
+                style="border-radius: 0 10px 10px 0;"
+              />
+            </div>
+            <small style="color: var(--text-muted); font-size: 0.8rem;">
+              3–30 chars. Lowercase letters, numbers, underscores. Must start with a letter.
+            </small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Display Name</label>
+            <input
+              class="form-control"
+              type="text"
+              name="display_name"
+              value="<%= user.display_name || '' %>"
+              maxlength="100"
+              placeholder="How you want to appear"
+            />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Bio</label>
+            <textarea
+              class="form-control"
+              name="bio"
+              rows="4"
+              maxlength="300"
+              placeholder="A short bio about yourself and the games you love..."
+            ><%= user.bio || '' %></textarea>
+            <small style="color: var(--text-muted); font-size: 0.8rem;">Max 300 characters</small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Pronouns (optional)</label>
+            <input class="form-control" type="text" name="pronouns" value="<%= user.pronouns || '' %>" maxlength="40" placeholder="they/them, she/her, he/him…" />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Location (optional)</label>
+            <input class="form-control" type="text" name="location" value="<%= user.location || '' %>" maxlength="80" placeholder="City, country" />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Favorite game (optional)</label>
+            <input type="hidden" name="favorite_game" id="fav-title" value="<%= user.favorite_game || '' %>" />
+            <input type="hidden" name="favorite_game_id" id="fav-id" value="<%= user.favorite_game_id || '' %>" />
+            <input type="hidden" name="favorite_game_cover" id="fav-cover" value="<%= user.favorite_game_cover || '' %>" />
+
+            <div id="fav-selected" class="selected-game" style="<%= user.favorite_game ? 'display:flex;' : 'display:none;' %>">
+              <img id="fav-selected-cover" src="<%= user.favorite_game_cover || '' %>" alt="" style="<%= user.favorite_game_cover ? '' : 'display:none;' %>" />
+              <div>
+                <div id="fav-selected-title" class="selected-title"><%= user.favorite_game || '' %></div>
+                <button type="button" class="nav-btn" style="margin-top:0.4rem;padding:0.25rem 0.75rem;font-size:0.8rem;" id="fav-clear">Clear</button>
+              </div>
+            </div>
+
+            <input
+              class="form-control"
+              type="text"
+              id="fav-search"
+              placeholder="Search IGDB for a game…"
+              autocomplete="off"
+              style="<%= user.favorite_game ? 'display:none;' : '' %>"
+            />
+            <div id="fav-status" style="font-size:0.8rem;color:var(--text-muted);margin-top:0.35rem;"></div>
+            <div id="fav-results" class="search-results"></div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Accent color</label>
+            <div style="display:flex; gap:0.75rem; align-items:center;">
+              <input type="color" name="accent_color" value="<%= user.accent_color || '#4f8cff' %>" style="width:3rem; height:2.5rem; border:none; background:transparent; cursor:pointer;" />
+              <span style="color:var(--text-muted); font-size:0.85rem;">Used on your profile header & highlights</span>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Profile style</label>
+            <select class="form-control" name="profile_style">
+              <option value="default" <%= (user.profile_style || 'default') === 'default' ? 'selected' : '' %>>Default</option>
+              <option value="compact" <%= user.profile_style === 'compact' ? 'selected' : '' %>>Compact</option>
+              <option value="vivid" <%= user.profile_style === 'vivid' ? 'selected' : '' %>>Vivid</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Twitch username (optional)</label>
+            <div class="input-group">
+              <span class="input-group-text" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 10px 0 0 10px;">twitch.tv/</span>
+              <input
+                class="form-control"
+                type="text"
+                name="twitch_username"
+                value="<%= user.twitch_username || '' %>"
+                placeholder="your_channel"
+                maxlength="50"
+                style="border-radius: 0 10px 10px 0;"
+              />
+            </div>
+            <small style="color: var(--text-muted); font-size: 0.8rem;">
+              If you’re live, your stream will appear on your profile.
+            </small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">YouTube (optional)</label>
+            <input
+              class="form-control"
+              type="text"
+              name="youtube_url"
+              value="<%= user.youtube_url || '' %>"
+              placeholder="@channel or https://youtube.com/@channel"
+            />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">X / Twitter (optional)</label>
+            <div class="input-group">
+              <span class="input-group-text" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 10px 0 0 10px;">@</span>
+              <input
+                class="form-control"
+                type="text"
+                name="x_username"
+                value="<%= user.x_username || '' %>"
+                placeholder="handle"
+                maxlength="50"
+                style="border-radius: 0 10px 10px 0;"
+              />
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Avatar URL (optional)</label>
+            <input
+              class="form-control"
+              type="url"
+              name="avatar_url"
+              value="<%= user.avatar_url || '' %>"
+              placeholder="https://example.com/avatar.jpg"
+            />
+            <small style="color: var(--text-muted); font-size: 0.8rem;">
+              Or paste a direct image link instead of uploading.
+            </small>
+          </div>
+
+          <button type="submit" class="btn-submit">Save Changes</button>
+        </form>
+
+        <div class="avatar-upload-card">
+          <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem;">Profile photo</h2>
+          <div class="avatar-upload-preview">
+            <% if (user.avatar_url) { %>
+              <img src="<%= user.avatar_url %>" alt="Current avatar" id="avatar-current" />
+            <% } else { %>
+              <div class="avatar-upload-placeholder" id="avatar-preview-placeholder">
+                <%= (user.display_name || user.username || "?").charAt(0).toUpperCase() %>
+              </div>
+            <% } %>
+          </div>
+
+          <input
+            class="form-control"
+            type="file"
+            name="avatar"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            id="avatar-input"
+          />
+          <small style="color: var(--text-muted); font-size: 0.8rem; display:block; margin: 0.4rem 0 0.75rem;">
+            Choose a photo, crop it to a square, then save · max 5 MB
+          </small>
+
+          <!-- Cropper panel (hidden until file selected) -->
+          <div id="crop-panel" class="crop-panel" style="display: none;">
+            <div class="crop-stage">
+              <img id="crop-image" alt="Crop preview" />
+            </div>
+            <div class="crop-actions">
+              <button type="button" class="nav-btn" id="crop-cancel">Cancel</button>
+              <button type="button" class="nav-btn nav-btn-primary" id="crop-save">Save cropped photo</button>
+            </div>
+            <div id="crop-status" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;"></div>
+          </div>
+        </div>
+
+        <div class="avatar-upload-card">
+          <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem;">Profile banner</h2>
+          <% if (user.banner_url) { %>
+            <img src="<%= user.banner_url %>" alt="Banner" style="width:100%; max-height:140px; object-fit:cover; border-radius:12px; border:1px solid var(--border); margin-bottom:0.75rem;" />
+          <% } else { %>
+            <div style="height:100px; border-radius:12px; background:var(--surface-2); border:1px dashed var(--border); margin-bottom:0.75rem; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:0.85rem;">No banner yet</div>
+          <% } %>
+          <form action="/profile/banner" method="POST" enctype="multipart/form-data">
+            <input class="form-control" type="file" name="banner" accept="image/jpeg,image/png,image/gif,image/webp" required />
+            <small style="color: var(--text-muted); font-size: 0.8rem; display:block; margin: 0.4rem 0 0.75rem;">
+              Wide image works best · max 8 MB · cropped to 1500×500
+            </small>
+            <button type="submit" class="btn-submit">Upload banner</button>
+          </form>
+          <% if (user.banner_url) { %>
+            <form action="/profile/banner/remove" method="POST" style="margin-top:0.5rem;">
+              <button type="submit" class="nav-btn" style="width:100%;">Remove banner</button>
+            </form>
+          <% } %>
+        </div>
+
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
+    <script>
+      (function () {
+        const input = document.getElementById("avatar-input");
+        const panel = document.getElementById("crop-panel");
+        const image = document.getElementById("crop-image");
+        const statusEl = document.getElementById("crop-status");
+        const btnSave = document.getElementById("crop-save");
+        const btnCancel = document.getElementById("crop-cancel");
+        let cropper = null;
+        let objectUrl = null;
+
+        function destroyCropper() {
+          if (cropper) {
+            cropper.destroy();
+            cropper = null;
+          }
+          if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+            objectUrl = null;
+          }
+          image.removeAttribute("src");
+          panel.style.display = "none";
+          statusEl.textContent = "";
+          btnSave.disabled = false;
+        }
+
+        input.addEventListener("change", function () {
+          const file = input.files && input.files[0];
+          if (!file) return;
+
+          if (file.size > 5 * 1024 * 1024) {
+            alert("Image must be under 5 MB.");
+            input.value = "";
+            return;
+          }
+
+          destroyCropper();
+          objectUrl = URL.createObjectURL(file);
+          image.src = objectUrl;
+          panel.style.display = "block";
+
+          image.onload = function () {
+            cropper = new Cropper(image, {
+              aspectRatio: 1,
+              viewMode: 1,
+              dragMode: "move",
+              autoCropArea: 1,
+              responsive: true,
+              background: false,
+              guides: true,
+              center: true,
+              highlight: false,
+              cropBoxMovable: true,
+              cropBoxResizable: true,
+            });
+          };
+        });
+
+        btnCancel.addEventListener("click", function () {
+          destroyCropper();
+          input.value = "";
+        });
+
+        btnSave.addEventListener("click", function () {
+          if (!cropper) return;
+          btnSave.disabled = true;
+          statusEl.textContent = "Uploading…";
+
+          // Export a square canvas; server will finalize to 256 WebP
+          const canvas = cropper.getCroppedCanvas({
+            width: 512,
+            height: 512,
+            imageSmoothingEnabled: true,
+            imageSmoothingQuality: "high",
+          });
+
+          if (!canvas) {
+            statusEl.textContent = "Could not crop image.";
+            btnSave.disabled = false;
+            return;
+          }
+
+          canvas.toBlob(
+            async function (blob) {
+              if (!blob) {
+                statusEl.textContent = "Could not process image.";
+                btnSave.disabled = false;
+                return;
+              }
+              try {
+                const form = new FormData();
+                form.append("avatar", blob, "avatar.png");
+                const res = await fetch("/profile/avatar", {
+                  method: "POST",
+                  body: form,
+                  headers: { Accept: "application/json" },
+                });
+
+                // Server currently renders HTML; follow redirect / reload on success
+                if (res.redirected) {
+                  window.location.href = res.url;
+                  return;
+                }
+
+                const contentType = res.headers.get("content-type") || "";
+                if (contentType.includes("application/json")) {
+                  const data = await res.json();
+                  if (data.ok) {
+                    window.location.reload();
+                    return;
+                  }
+                  statusEl.textContent = data.error || "Upload failed.";
+                  btnSave.disabled = false;
+                  return;
+                }
+
+                // HTML response from server — treat as success and reload edit page
+                if (res.ok) {
+                  window.location.href = "/profile/edit";
+                  return;
+                }
+                statusEl.textContent = "Upload failed.";
+                btnSave.disabled = false;
+              } catch (err) {
+                statusEl.textContent = "Upload error. Try again.";
+                btnSave.disabled = false;
+              }
+            },
+            "image/png",
+            0.92
+          );
+        });
+      })();
+    </script>
+      <script src="/js/nav.js"></script>
+  
+    <script>
+      (function () {
+        const search = document.getElementById("fav-search");
+        const results = document.getElementById("fav-results");
+        const status = document.getElementById("fav-status");
+        const selected = document.getElementById("fav-selected");
+        const clearBtn = document.getElementById("fav-clear");
+        if (!search) return;
+        let timer = null;
+
+        function escapeHtml(str) {
+          return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function pick(game) {
+          document.getElementById("fav-title").value = game.name || "";
+          document.getElementById("fav-id").value = game.id || "";
+          document.getElementById("fav-cover").value = game.cover || "";
+          document.getElementById("fav-selected-title").textContent = game.name || "";
+          const img = document.getElementById("fav-selected-cover");
+          if (game.cover) {
+            img.src = game.cover;
+            img.style.display = "block";
+          } else {
+            img.removeAttribute("src");
+            img.style.display = "none";
+          }
+          selected.style.display = "flex";
+          search.style.display = "none";
+          search.value = "";
+          results.innerHTML = "";
+          status.textContent = "";
+        }
+
+        clearBtn && clearBtn.addEventListener("click", () => {
+          document.getElementById("fav-title").value = "";
+          document.getElementById("fav-id").value = "";
+          document.getElementById("fav-cover").value = "";
+          selected.style.display = "none";
+          search.style.display = "block";
+          search.focus();
+        });
+
+        search.addEventListener("input", () => {
+          clearTimeout(timer);
+          const q = search.value.trim();
+          if (q.length < 2) {
+            results.innerHTML = "";
+            status.textContent = "";
+            return;
+          }
+          status.textContent = "Searching…";
+          timer = setTimeout(async () => {
+            try {
+              const res = await fetch("/api/games/search?q=" + encodeURIComponent(q));
+              const data = await res.json();
+              if (!res.ok) {
+                status.textContent = data.error || "Search failed";
+                results.innerHTML = "";
+                return;
+              }
+              const list = data.results || [];
+              status.textContent = list.length ? list.length + " result(s)" : "No games found";
+              results.innerHTML = list
+                .map(
+                  (g) =>
+                    `<button type="button" class="search-result-item" data-id="${g.id}">
+                      ${g.cover ? `<img src="${g.cover}" alt="" />` : `<div class="search-result-placeholder"></div>`}
+                      <div>
+                        <div class="search-result-name">${escapeHtml(g.name)}</div>
+                        <div class="search-result-meta">${g.released ? new Date(g.released).getFullYear() : "—"}</div>
+                      </div>
+                    </button>`
+                )
+                .join("");
+              results.querySelectorAll(".search-result-item").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                  const id = parseInt(btn.dataset.id, 10);
+                  const game = list.find((x) => x.id === id);
+                  if (game) pick(game);
+                });
+              });
+            } catch (e) {
+              status.textContent = "Search error";
+              results.innerHTML = "";
+            }
+          }, 300);
+        });
+      })();
+    </script>
+
+  </body>
+</html>

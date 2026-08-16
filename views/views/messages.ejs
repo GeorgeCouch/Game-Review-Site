@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Messages – GameCouch</title>
+    <%- include('partials/head') %>
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : null, showSort: false }) %>
+
+    <div class="page-wrapper">
+      <div class="page-header">
+        <div>
+          <h1>Messages</h1>
+          <p>Private conversations</p>
+        </div>
+      </div>
+
+      <% if (typeof error !== "undefined" && error) { %>
+        <p style="color:#ff8a8a;"><%= error %></p>
+      <% } %>
+
+      <div class="dm-layout">
+        <aside class="dm-sidebar">
+          <div class="dm-sidebar-title">Inbox</div>
+          <% if (!threads || !threads.length) { %>
+            <p class="dm-empty">No conversations yet. Open a profile and hit Message.</p>
+          <% } else { %>
+            <% threads.forEach(function(t) { %>
+              <a
+                href="/messages/u/<%= t.other_username %>"
+                class="dm-thread<%= otherUser && otherUser.username === t.other_username ? ' active' : '' %>"
+              >
+                <% if (t.other_avatar) { %>
+                  <img src="<%= t.other_avatar %>" alt="" class="dm-avatar" />
+                <% } else { %>
+                  <div class="dm-avatar dm-avatar-fallback">
+                    <%= (t.other_display_name || t.other_username || "?").charAt(0).toUpperCase() %>
+                  </div>
+                <% } %>
+                <div class="dm-thread-meta">
+                  <div class="dm-thread-name">
+                    <%= t.other_display_name || t.other_username %>
+                    <% if (t.unread_count > 0) { %>
+                      <span class="notif-badge"><%= t.unread_count %></span>
+                    <% } %>
+                  </div>
+                  <div class="dm-thread-preview">
+                    <%= t.last_message ? (t.last_message.length > 48 ? t.last_message.slice(0, 48) + "…" : t.last_message) : "No messages yet" %>
+                  </div>
+                </div>
+              </a>
+            <% }) %>
+          <% } %>
+        </aside>
+
+        <section class="dm-main">
+          <% if (!otherUser) { %>
+            <div class="dm-placeholder">
+              <h2>Select a conversation</h2>
+              <p>Or visit someone’s profile and click Message.</p>
+            </div>
+          <% } else { %>
+            <div class="dm-chat-header">
+              <a href="/u/<%= otherUser.username %>" style="color: inherit; text-decoration: none; display: flex; align-items: center; gap: 0.65rem;">
+                <% if (otherUser.avatar_url) { %>
+                  <img src="<%= otherUser.avatar_url %>" alt="" class="dm-avatar" />
+                <% } else { %>
+                  <div class="dm-avatar dm-avatar-fallback">
+                    <%= (otherUser.display_name || otherUser.username || "?").charAt(0).toUpperCase() %>
+                  </div>
+                <% } %>
+                <div>
+                  <div class="dm-thread-name"><%= otherUser.display_name || otherUser.username %></div>
+                  <div class="dm-thread-preview">@<%= otherUser.username %></div>
+                </div>
+              </a>
+            </div>
+
+            <div class="dm-messages" id="dm-messages">
+              <% if (!messages || !messages.length) { %>
+                <p class="dm-empty">Say hello — no messages yet.</p>
+              <% } else { %>
+                <% messages.forEach(function(m) {
+                  const mine = userlog && m.sender_id === userlog.id;
+                %>
+                  <div class="dm-bubble<%= mine ? ' mine' : '' %>">
+                    <div class="dm-bubble-text"><%= m.content %></div>
+                    <div class="dm-bubble-time">
+                      <%= m.created_at ? new Date(m.created_at).toLocaleString() : "" %>
+                    </div>
+                  </div>
+                <% }) %>
+              <% } %>
+            </div>
+
+            <form class="dm-compose" action="/messages/u/<%= otherUser.username %>" method="POST">
+              <textarea
+                class="form-control"
+                name="content"
+                rows="2"
+                maxlength="2000"
+                placeholder="Write a message…"
+                required
+              ></textarea>
+              <button type="submit" class="nav-btn nav-btn-primary">Send</button>
+            </form>
+          <% } %>
+        </section>
+      </div>
+    </div>
+
+    <script src="/js/nav.js"></script>
+    <script>
+      const box = document.getElementById("dm-messages");
+      if (box) box.scrollTop = box.scrollHeight;
+    </script>
+  </body>
+</html>

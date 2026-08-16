@@ -1,0 +1,126 @@
+<% if (typeof userlog !== "undefined" && userlog) { %>
+<div class="gc-modal" id="edit-review-modal" hidden aria-hidden="true">
+  <div class="gc-modal-backdrop" data-close-edit-modal></div>
+  <div class="gc-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-review-title">
+    <div class="gc-modal-header">
+      <div>
+        <h2 id="edit-review-title">Edit Review</h2>
+        <p id="edit-review-game-name">Update your rating and thoughts.</p>
+      </div>
+      <button type="button" class="gc-modal-close" data-close-edit-modal aria-label="Close">&times;</button>
+    </div>
+    <div class="gc-modal-body">
+      <form action="/edit-game" method="post" id="edit-review-form">
+        <input type="hidden" name="review_id" id="edit-field-review-id" />
+        <div class="mb-3" id="edit-selected-game" style="display:none;">
+          <div class="selected-game" style="display:flex;">
+            <img id="edit-selected-cover" src="" alt="" />
+            <div>
+              <div id="edit-selected-title" class="selected-title"></div>
+            </div>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Completed Date</label>
+          <input class="form-control" type="date" name="completed" id="edit-field-completed" required />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Personal Rating (0.0 – 5.0)</label>
+          <input class="form-control" type="number" name="rating" id="edit-field-rating" min="0" max="5" step="0.1" required />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Review</label>
+          <textarea class="form-control" name="review" id="edit-field-review" rows="5" required></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="spoiler-toggle" title="Mark review as containing spoilers">
+            <input type="checkbox" name="has_spoilers" value="1" id="edit-field-spoilers" />
+            <span class="spoiler-toggle-ui" aria-hidden="true"></span>
+            <span class="spoiler-toggle-label">Spoilers</span>
+          </label>
+        </div>
+        <button type="submit" class="btn-submit">Save Changes</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const modal = document.getElementById("edit-review-modal");
+  if (!modal) return;
+
+  function openModal() {
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("gc-modal-open");
+    modal.classList.remove("is-closing");
+    void modal.offsetWidth;
+    modal.classList.add("is-open");
+  }
+
+  function closeModal() {
+    if (modal.hidden) return;
+    modal.classList.remove("is-open");
+    modal.classList.add("is-closing");
+    const done = () => {
+      modal.hidden = true;
+      modal.classList.remove("is-closing");
+      modal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("gc-modal-open");
+      modal.removeEventListener("animationend", done);
+    };
+    modal.addEventListener("animationend", done);
+    setTimeout(done, 220);
+  }
+
+  function fillEditForm(el) {
+    const reviewId = el.getAttribute("data-review-id") || "";
+    const title = el.getAttribute("data-title") || "";
+    const cover = el.getAttribute("data-cover") || "";
+    const completed = el.getAttribute("data-completed") || "";
+    const rating = el.getAttribute("data-rating") || "";
+    let notes = el.getAttribute("data-notes") || "";
+    try { notes = decodeURIComponent(notes); } catch (err) {}
+
+    const spoilers = el.getAttribute("data-spoilers") === "1";
+
+    document.getElementById("edit-field-review-id").value = reviewId;
+    document.getElementById("edit-field-completed").value = (completed || "").toString().slice(0, 10);
+    document.getElementById("edit-field-rating").value = rating;
+    document.getElementById("edit-field-review").value = notes;
+    document.getElementById("edit-field-spoilers").checked = spoilers;
+    document.getElementById("edit-review-game-name").textContent = title || "Update your rating and thoughts.";
+    document.getElementById("edit-selected-title").textContent = title;
+    const coverEl = document.getElementById("edit-selected-cover");
+    const wrap = document.getElementById("edit-selected-game");
+    if (cover) {
+      coverEl.src = cover;
+      coverEl.style.display = "block";
+      wrap.style.display = "block";
+    } else {
+      coverEl.removeAttribute("src");
+      wrap.style.display = title ? "block" : "none";
+    }
+  }
+
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-open-edit-modal]");
+    if (!el) return;
+    e.preventDefault();
+    fillEditForm(el);
+    openModal();
+  });
+
+  document.querySelectorAll("[data-close-edit-modal]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeModal();
+    });
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !modal.hidden) closeModal();
+  });
+})();
+</script>
+<% } %>

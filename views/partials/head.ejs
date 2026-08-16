@@ -1,0 +1,61 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0d12" id="meta-theme-color" />
+<meta name="color-scheme" content="dark light" id="meta-color-scheme" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          gc: {
+            bg: "#0b0d12",
+            elevated: "#10131a",
+            surface: "#141822",
+            surface2: "#1a2030",
+            surface3: "#222a3c",
+            border: "rgba(255,255,255,0.08)",
+            text: "#eef1f7",
+            muted: "#9aa3b8",
+            accent: "#4f8cff",
+            accent2: "#7c5cff",
+            danger: "#ff5c7a",
+            star: "#f5c518",
+          },
+        },
+        fontFamily: {
+          sans: ["Inter", "system-ui", "sans-serif"],
+        },
+        boxShadow: {
+          gc: "0 12px 40px rgba(0,0,0,0.35)",
+        },
+        borderRadius: {
+          gc: "16px",
+        },
+      },
+    },
+  };
+</script>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("gc-theme");
+      if (t !== "light" && t !== "dark") t = "dark";
+      document.documentElement.setAttribute("data-theme", t);
+      document.documentElement.style.colorScheme = t;
+    } catch (e) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  })();
+</script>
+<link rel="stylesheet" href="/styles/styles.css" />

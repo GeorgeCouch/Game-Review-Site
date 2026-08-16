@@ -1,0 +1,2 @@
+ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_game_id INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_game_cover TEXT;

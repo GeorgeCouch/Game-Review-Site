@@ -1,0 +1,255 @@
+<% if (typeof userlog !== "undefined" && userlog) { %>
+<div class="gc-modal" id="add-review-modal" hidden aria-hidden="true">
+  <div class="gc-modal-backdrop" data-close-review-modal></div>
+  <div class="gc-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="add-review-title">
+    <div class="gc-modal-header">
+      <div>
+        <h2 id="add-review-title">Add a Review</h2>
+        <p>Search for a game, rate it, and share your thoughts.</p>
+      </div>
+      <button type="button" class="gc-modal-close" data-close-review-modal aria-label="Close">&times;</button>
+    </div>
+    <div class="gc-modal-body">
+      <form action="/add-game" method="post" id="review-form">
+        <div class="mb-3">
+          <label class="form-label">Search for a game</label>
+          <input class="form-control" type="text" id="game-search" placeholder="Start typing a game name…" autocomplete="off" />
+          <div id="search-status" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;"></div>
+          <div id="search-results" class="search-results add-review-search-results"></div>
+        </div>
+
+        <div id="selected-game" class="selected-game" style="display: none;">
+          <img id="selected-cover" src="" alt="" />
+          <div>
+            <div id="selected-title" class="selected-title"></div>
+            <div id="selected-year" class="selected-year"></div>
+            <button type="button" class="nav-btn" style="margin-top: 0.5rem; padding: 0.25rem 0.75rem; font-size: 0.8rem;" id="clear-selection">
+              Change game
+            </button>
+          </div>
+        </div>
+
+        <input type="hidden" name="game_id" id="field-game-id" required />
+        <input type="hidden" name="title" id="field-title" />
+        <input type="hidden" name="cover_url" id="field-cover" />
+        <input type="hidden" name="released" id="field-released" />
+
+        <div class="mb-3">
+          <label class="form-label">Completed Date</label>
+          <input class="form-control" type="date" name="completed" required />
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Personal Rating (0.0 – 5.0)</label>
+          <input class="form-control" type="number" name="rating" min="0" max="5" step="0.1" placeholder="4.5" required />
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Review</label>
+          <textarea class="form-control" name="review" rows="5" placeholder="What did you think of the game?" required></textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="spoiler-toggle" title="Mark review as containing spoilers">
+            <input type="checkbox" name="has_spoilers" value="1" />
+            <span class="spoiler-toggle-ui" aria-hidden="true"></span>
+            <span class="spoiler-toggle-label">Spoilers</span>
+          </label>
+        </div>
+
+        <button type="submit" class="btn-submit" id="submit-review" disabled>Add Review</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const modal = document.getElementById("add-review-modal");
+  if (!modal) return;
+
+  function openModal() {
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("gc-modal-open");
+    // restart enter animation
+    modal.classList.remove("is-closing");
+    void modal.offsetWidth;
+    modal.classList.add("is-open");
+    const input = document.getElementById("game-search");
+    if (input) setTimeout(() => input.focus(), 180);
+  }
+
+  function closeModal() {
+    if (modal.hidden) return;
+    modal.classList.remove("is-open");
+    modal.classList.add("is-closing");
+    const done = () => {
+      modal.hidden = true;
+      modal.classList.remove("is-closing");
+      modal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("gc-modal-open");
+      modal.removeEventListener("animationend", done);
+    };
+    modal.addEventListener("animationend", done);
+    // fallback if animationend doesn't fire
+    setTimeout(done, 220);
+  }
+
+  window.openAddReviewModal = openModal;
+  window.closeAddReviewModal = closeModal;
+
+  function prefillFromEl(el) {
+    const id = el.getAttribute("data-game-id");
+    if (!id) return;
+    selectGame({
+      id: parseInt(id, 10),
+      name: el.getAttribute("data-game-name") || "",
+      cover: el.getAttribute("data-game-cover") || "",
+      released: el.getAttribute("data-game-released") || "",
+    });
+  }
+
+  // Event delegation so buttons rendered after this script still work
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-open-review-modal]");
+    if (!el) return;
+    e.preventDefault();
+    openModal();
+    prefillFromEl(el);
+  });
+
+  document.querySelectorAll("[data-close-review-modal]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeModal();
+    });
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !modal.hidden) closeModal();
+  });
+
+  // Game search
+  const searchInput = document.getElementById("game-search");
+  const resultsEl = document.getElementById("search-results");
+  const statusEl = document.getElementById("search-status");
+  const selectedEl = document.getElementById("selected-game");
+  const submitBtn = document.getElementById("submit-review");
+  let debounceTimer = null;
+
+  function selectGame(game) {
+    const fieldId = document.getElementById("field-game-id");
+    const fieldTitle = document.getElementById("field-title");
+    const fieldCover = document.getElementById("field-cover");
+    const fieldReleased = document.getElementById("field-released");
+    const titleEl = document.getElementById("selected-title");
+    const yearEl = document.getElementById("selected-year");
+    const cover = document.getElementById("selected-cover");
+    if (fieldId) fieldId.value = game.id;
+    if (fieldTitle) fieldTitle.value = game.name || "";
+    if (fieldCover) fieldCover.value = game.cover || "";
+    if (fieldReleased) fieldReleased.value = game.released || "";
+    if (titleEl) titleEl.textContent = game.name || "";
+    let yearText = "";
+    if (game.released) {
+      const d = new Date(game.released);
+      yearText = Number.isNaN(d.getTime()) ? String(game.released).slice(0, 4) : String(d.getFullYear());
+    }
+    if (yearEl) yearEl.textContent = yearText;
+    if (cover) {
+      if (game.cover) {
+        cover.src = game.cover;
+        cover.style.display = "block";
+      } else {
+        cover.removeAttribute("src");
+        cover.style.display = "none";
+      }
+    }
+    if (selectedEl) selectedEl.style.display = "flex";
+    if (resultsEl) resultsEl.innerHTML = "";
+    if (statusEl) statusEl.textContent = "";
+    if (searchInput) searchInput.value = game.name || "";
+    if (submitBtn) submitBtn.disabled = false;
+  }
+
+  const clearBtn = document.getElementById("clear-selection");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      selectedEl.style.display = "none";
+      document.getElementById("field-game-id").value = "";
+      document.getElementById("field-title").value = "";
+      document.getElementById("field-cover").value = "";
+      document.getElementById("field-released").value = "";
+      searchInput.value = "";
+      if (submitBtn) submitBtn.disabled = true;
+      searchInput.focus();
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      const q = searchInput.value.trim();
+      if (q.length < 2) {
+        resultsEl.innerHTML = "";
+        statusEl.textContent = "";
+        return;
+      }
+      statusEl.textContent = "Searching…";
+      debounceTimer = setTimeout(async () => {
+        try {
+          const res = await fetch("/api/games/search?q=" + encodeURIComponent(q));
+          const data = await res.json();
+          if (!res.ok) {
+            statusEl.textContent = data.error || "Search failed";
+            resultsEl.innerHTML = "";
+            return;
+          }
+          if (!data.results || !data.results.length) {
+            statusEl.textContent = "No games found";
+            resultsEl.innerHTML = "";
+            return;
+          }
+          statusEl.textContent = data.results.length + " result" + (data.results.length === 1 ? "" : "s");
+          resultsEl.innerHTML = data.results
+            .map(
+              (g) =>
+                `<button type="button" class="search-result-item" data-id="${g.id}">
+                  ${g.cover ? `<img src="${g.cover}" alt="" />` : `<div class="search-result-placeholder"></div>`}
+                  <div>
+                    <div class="search-result-name">${escapeHtml(g.name)}</div>
+                    <div class="search-result-meta">${g.released ? new Date(g.released).getFullYear() : "—"}</div>
+                  </div>
+                </button>`
+            )
+            .join("");
+          resultsEl.querySelectorAll(".search-result-item").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const id = parseInt(btn.dataset.id, 10);
+              const game = data.results.find((x) => x.id === id);
+              if (game) selectGame(game);
+            });
+          });
+        } catch (err) {
+          statusEl.textContent = "Search error";
+          resultsEl.innerHTML = "";
+        }
+      }, 300);
+    });
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // Deep link support
+  try {
+    if (new URLSearchParams(window.location.search).get("review") === "1") openModal();
+  } catch (e) {}
+})();
+</script>
+<% } %>

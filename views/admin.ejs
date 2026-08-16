@@ -1,21 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin – GameCouch</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-      crossorigin="anonymous"
-    />
-    <link rel="stylesheet" href="/styles/styles.css" />
+    <%- include('partials/head') %>
   </head>
   <body>
     <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
-<div class="page-wrapper">
+    <div class="page-wrapper admin-page">
       <div class="page-header">
         <div>
           <h1>Moderation</h1>
@@ -23,174 +14,250 @@
         </div>
       </div>
 
-      <div class="profile-stats-panel" style="margin-top: 0;">
-        <div class="profile-stat-card">
-          <div class="profile-stat-value"><%= stats.users %></div>
-          <div class="profile-stat-label">Users</div>
-        </div>
-        <div class="profile-stat-card">
-          <div class="profile-stat-value"><%= stats.reviews %></div>
-          <div class="profile-stat-label">Reviews</div>
-        </div>
-        <div class="profile-stat-card">
-          <div class="profile-stat-value"><%= stats.comments %></div>
-          <div class="profile-stat-label">Comments</div>
-        </div>
-        <div class="profile-stat-card">
-          <div class="profile-stat-value"><%= stats.openReports %></div>
-          <div class="profile-stat-label">Open reports</div>
-        </div>
+      <% const activeTab = typeof adminTab !== "undefined" ? adminTab : "reports"; %>
+      <div class="admin-stats">
+        <a href="/admin?tab=reports&page=1" class="admin-stat-card admin-tab-btn<%= activeTab === 'reports' ? ' active' : '' %>">
+          <div class="admin-stat-value<%= (stats.openReports > 0) ? ' admin-stat-alert-text' : '' %>"><%= stats.openReports %></div>
+          <div class="admin-stat-label">Open reports</div>
+        </a>
+        <a href="/admin?tab=reviews&page=1" class="admin-stat-card admin-tab-btn<%= activeTab === 'reviews' ? ' active' : '' %>">
+          <div class="admin-stat-value"><%= stats.reviews %></div>
+          <div class="admin-stat-label">Reviews</div>
+        </a>
+        <a href="/admin?tab=comments&page=1" class="admin-stat-card admin-tab-btn<%= activeTab === 'comments' ? ' active' : '' %>">
+          <div class="admin-stat-value"><%= stats.comments %></div>
+          <div class="admin-stat-label">Comments</div>
+        </a>
+        <a href="/admin?tab=users&page=1" class="admin-stat-card admin-tab-btn<%= activeTab === 'users' ? ' active' : '' %>">
+          <div class="admin-stat-value"><%= stats.users %></div>
+          <div class="admin-stat-label">Users</div>
+        </a>
+      </div>
+
+      <div class="admin-tabs" role="tablist">
+        <a href="/admin?tab=reports&page=1" class="admin-tab<%= activeTab === 'reports' ? ' active' : '' %>">Reports<% if (stats.openReports > 0) { %> <span class="admin-tab-badge"><%= stats.openReports %></span><% } %></a>
+        <a href="/admin?tab=reviews&page=1" class="admin-tab<%= activeTab === 'reviews' ? ' active' : '' %>">Reviews</a>
+        <a href="/admin?tab=comments&page=1" class="admin-tab<%= activeTab === 'comments' ? ' active' : '' %>">Comments</a>
+        <a href="/admin?tab=users&page=1" class="admin-tab<%= activeTab === 'users' ? ' active' : '' %>">Users</a>
       </div>
 
       <!-- Reports -->
-      <div class="page-header" style="margin-top: 2rem;">
-        <div>
-          <h2 style="font-size: 1.2rem; margin: 0; font-weight: 700;">Open reports</h2>
+      <section class="admin-section admin-panel<%= activeTab === 'reports' ? ' is-active' : '' %>" data-admin-panel="reports" id="admin-panel-reports">
+        <div class="admin-section-head">
+          <h2>Open reports</h2>
+          <% if (reports && reports.length) { %>
+            <span class="admin-section-count" data-admin-count="reports"><%= reports.length %></span>
+          <% } %>
         </div>
-      </div>
-      <% if (!reports || !reports.length) { %>
-        <p style="color: var(--text-muted);">No open reports.</p>
-      <% } else { %>
-        <div class="admin-table">
-          <% reports.forEach(function(r) { %>
-            <div class="admin-row">
-              <div class="admin-row-main">
-                <div class="admin-row-title">
-                  <%= r.target_type %> #<%= r.target_id %>
-                  <span class="admin-muted">
-                    by <%= r.reporter_display_name || r.reporter_username || "unknown" %>
-                  </span>
+        <div class="admin-filter-bar">
+          <input type="search" class="form-control admin-filter-input" data-admin-filter="reports" placeholder="Filter reports by type, reason, reporter…" autocomplete="off" />
+        </div>
+        <% if (!reports || !reports.length) { %>
+          <div class="admin-empty">No open reports. Nice work.</div>
+        <% } else { %>
+          <div class="admin-card-list">
+            <% reports.forEach(function(r) { %>
+              <div class="admin-card" data-admin-item>
+                <div class="admin-card-body">
+                  <div class="admin-card-title">
+                    <span class="admin-type-pill"><%= r.target_type %></span>
+                    <span>#<%= r.target_id %></span>
+                    <span class="admin-muted">reported by <%= r.reporter_display_name || r.reporter_username || "unknown" %></span>
+                  </div>
+                  <div class="admin-card-reason"><%= r.reason || "No reason given" %></div>
+                  <div class="admin-card-meta">
+                    <%= r.created_at ? new Date(r.created_at).toLocaleString() : "" %>
+                    <% if (r.target_type === "review") { %>
+                      · <a href="/review/<%= r.target_id %>">View review</a>
+                    <% } else if (r.target_type === "user") { %>
+                      · <a href="/u/<%= r.target_id %>">View user</a>
+                    <% } %>
+                  </div>
                 </div>
-                <div class="admin-muted"><%= r.reason || "No reason given" %></div>
-                <div class="admin-muted" style="font-size: 0.75rem;">
-                  <%= r.created_at ? new Date(r.created_at).toLocaleString() : "" %>
-                  <% if (r.target_type === "review") { %>
-                    · <a href="/review/<%= r.target_id %>" style="color: var(--accent);">View review</a>
-                  <% } else if (r.target_type === "user") { %>
-                    · <a href="/u/<%= r.target_id %>" style="color: var(--accent);">User id <%= r.target_id %></a>
-                  <% } %>
+                <div class="admin-card-actions">
+                  <form action="/admin/reports/<%= r.id %>/resolve" method="POST">
+                    <input type="hidden" name="status" value="resolved" />
+                    <button class="nav-btn nav-btn-primary" type="submit">Resolve</button>
+                  </form>
+                  <form action="/admin/reports/<%= r.id %>/resolve" method="POST">
+                    <input type="hidden" name="status" value="dismissed" />
+                    <button class="nav-btn" type="submit">Dismiss</button>
+                  </form>
                 </div>
               </div>
-              <div class="admin-row-actions">
-                <form action="/admin/reports/<%= r.id %>/resolve" method="POST">
-                  <input type="hidden" name="status" value="resolved" />
-                  <button class="nav-btn nav-btn-primary" type="submit">Resolve</button>
-                </form>
-                <form action="/admin/reports/<%= r.id %>/resolve" method="POST">
-                  <input type="hidden" name="status" value="dismissed" />
-                  <button class="nav-btn" type="submit">Dismiss</button>
+            <% }) %>
+          </div>
+        <% } %>
+      </section>
+
+      <!-- Reviews -->
+      <section class="admin-section admin-panel<%= activeTab === 'reviews' ? ' is-active' : '' %>" data-admin-panel="reviews" id="admin-panel-reviews">
+        <div class="admin-section-head">
+          <h2>Recent reviews</h2>
+          <span class="admin-section-count" data-admin-count="reviews"><%= (recentReviews || []).length %></span>
+        </div>
+        <div class="admin-filter-bar">
+          <input type="search" class="form-control admin-filter-input" data-admin-filter="reviews" placeholder="Filter reviews by title, author, notes…" autocomplete="off" />
+        </div>
+        <div class="admin-card-list">
+          <% (recentReviews || []).forEach(function(rev) { %>
+            <div class="admin-card" data-admin-item>
+              <div class="admin-card-body">
+                <div class="admin-card-title">
+                  <strong><%= rev.title %></strong>
+                  <span class="admin-muted"><%= rev.rating %>/5</span>
+                </div>
+                <div class="admin-card-meta">
+                  by
+                  <% if (rev.username) { %>
+                    <a href="/u/<%= rev.username %>"><%= rev.display_name || rev.username %></a>
+                  <% } else { %>
+                    <%= rev.email || "Unknown" %>
+                  <% } %>
+                  <% if (rev.id) { %>
+                    · <a href="/review/<%= rev.id %>">Open</a>
+                  <% } %>
+                </div>
+                <% if (rev.notes) { %>
+                  <div class="admin-card-reason"><%= rev.notes.length > 160 ? rev.notes.slice(0, 160) + "…" : rev.notes %></div>
+                <% } %>
+              </div>
+              <div class="admin-card-actions">
+                <form action="/admin/reviews/<%= rev.id %>/delete" method="POST" onsubmit="return confirm('Delete this review?');">
+                  <button class="nav-btn admin-btn-danger" type="submit">Delete</button>
                 </form>
               </div>
             </div>
           <% }) %>
         </div>
-      <% } %>
+      </section>
 
-      <!-- Recent reviews -->
-      <div class="page-header" style="margin-top: 2rem;">
-        <div>
-          <h2 style="font-size: 1.2rem; margin: 0; font-weight: 700;">Recent reviews</h2>
+      <!-- Comments -->
+      <section class="admin-section admin-panel<%= activeTab === 'comments' ? ' is-active' : '' %>" data-admin-panel="comments" id="admin-panel-comments">
+        <div class="admin-section-head">
+          <h2>Recent comments</h2>
+          <span class="admin-section-count" data-admin-count="comments"><%= (recentComments || []).length %></span>
         </div>
-      </div>
-      <div class="admin-table">
-        <% (recentReviews || []).forEach(function(g) { %>
-          <div class="admin-row">
-            <div class="admin-row-main">
-              <div class="admin-row-title">
-                <a href="/review/<%= g.id %>" style="color: inherit;"><%= g.title %></a>
-                <span class="admin-muted">· <%= g.rating %>/5</span>
-              </div>
-              <div class="admin-muted">
-                by
-                <% if (g.username) { %>
-                  <a href="/u/<%= g.username %>" style="color: var(--accent);"><%= g.display_name || g.username %></a>
-                <% } else { %>
-                  user #<%= g.user_id %>
-                <% } %>
-              </div>
-              <% if (g.notes) { %>
-                <div class="admin-muted" style="margin-top: 0.25rem;">
-                  <%= g.notes.length > 120 ? g.notes.slice(0, 120) + "…" : g.notes %>
+        <div class="admin-filter-bar">
+          <input type="search" class="form-control admin-filter-input" data-admin-filter="comments" placeholder="Filter comments by author or text…" autocomplete="off" />
+        </div>
+        <div class="admin-card-list">
+          <% (recentComments || []).forEach(function(c) { %>
+            <div class="admin-card" data-admin-item>
+              <div class="admin-card-body">
+                <div class="admin-card-title">
+                  <% if (c.username) { %>
+                    <a href="/u/<%= c.username %>"><%= c.display_name || c.username %></a>
+                  <% } else { %>
+                    <%= c.email || "User" %>
+                  <% } %>
+                  <span class="admin-muted">on <a href="/review/<%= c.review_id %>">review #<%= c.review_id %></a></span>
                 </div>
-              <% } %>
-            </div>
-            <div class="admin-row-actions">
-              <form action="/admin/reviews/<%= g.id %>/delete" method="POST" onsubmit="return confirm('Delete this review permanently?');">
-                <button class="nav-btn" type="submit" style="color: var(--danger); border-color: var(--danger);">Delete</button>
-              </form>
-            </div>
-          </div>
-        <% }) %>
-      </div>
-
-      <!-- Recent comments -->
-      <div class="page-header" style="margin-top: 2rem;">
-        <div>
-          <h2 style="font-size: 1.2rem; margin: 0; font-weight: 700;">Recent comments</h2>
-        </div>
-      </div>
-      <div class="admin-table">
-        <% (recentComments || []).forEach(function(c) { %>
-          <div class="admin-row">
-            <div class="admin-row-main">
-              <div class="admin-row-title">
-                <% if (c.username) { %>
-                  <a href="/u/<%= c.username %>" style="color: var(--accent);"><%= c.display_name || c.username %></a>
-                <% } else { %>
-                  user #<%= c.user_id %>
-                <% } %>
-                <span class="admin-muted">on <a href="/review/<%= c.review_id %>" style="color: var(--accent);">review #<%= c.review_id %></a></span>
+                <div class="admin-card-reason"><%= c.content %></div>
               </div>
-              <div class="admin-muted"><%= c.content %></div>
+              <div class="admin-card-actions">
+                <form action="/admin/comments/<%= c.id %>/delete" method="POST" onsubmit="return confirm('Delete this comment?');">
+                  <button class="nav-btn admin-btn-danger" type="submit">Delete</button>
+                </form>
+              </div>
             </div>
-            <div class="admin-row-actions">
-              <form action="/admin/comments/<%= c.id %>/delete" method="POST" onsubmit="return confirm('Delete this comment?');">
-                <button class="nav-btn" type="submit" style="color: var(--danger); border-color: var(--danger);">Delete</button>
-              </form>
-            </div>
-          </div>
-        <% }) %>
-      </div>
+          <% }) %>
+        </div>
+      </section>
 
       <!-- Users -->
-      <div class="page-header" style="margin-top: 2rem;">
-        <div>
-          <h2 style="font-size: 1.2rem; margin: 0; font-weight: 700;">Users</h2>
+      <section class="admin-section admin-panel<%= activeTab === 'users' ? ' is-active' : '' %>" data-admin-panel="users" id="admin-panel-users">
+        <div class="admin-section-head">
+          <h2>Users</h2>
+          <span class="admin-section-count" data-admin-count="users"><%= (users || []).length %></span>
         </div>
-      </div>
-      <div class="admin-table">
-        <% (users || []).forEach(function(u) { %>
-          <div class="admin-row">
-            <div class="admin-row-main">
-              <div class="admin-row-title">
-                <% if (u.username) { %>
-                  <a href="/u/<%= u.username %>" style="color: inherit;"><%= u.display_name || u.username %></a>
-                  <span class="admin-muted">@<%= u.username %></span>
-                <% } else { %>
-                  <%= u.email %>
-                <% } %>
-                <% if (u.is_admin) { %><span class="xp-reward-chip">admin</span><% } %>
-                <% if (u.is_banned) { %><span class="xp-reward-chip" style="border-color: var(--danger); color: #ff8a8a;">banned</span><% } %>
+        <div class="admin-filter-bar">
+          <input type="search" class="form-control admin-filter-input" data-admin-filter="users" placeholder="Filter users by name, @username, email…" autocomplete="off" />
+        </div>
+        <div class="admin-card-list">
+          <% (users || []).forEach(function(u) { %>
+            <div class="admin-card" data-admin-item>
+              <div class="admin-card-body">
+                <div class="admin-card-title">
+                  <% if (u.username) { %>
+                    <a href="/u/<%= u.username %>"><%= u.display_name || u.username %></a>
+                    <span class="admin-muted">@<%= u.username %></span>
+                  <% } else { %>
+                    <%= u.email %>
+                  <% } %>
+                  <% if (u.is_admin) { %><span class="admin-type-pill admin-pill-admin">admin</span><% } %>
+                  <% if (u.is_banned) { %><span class="admin-type-pill admin-pill-banned">banned</span><% } %>
+                </div>
+                <div class="admin-card-meta"><%= u.email %> · <%= u.total_xp || 0 %> XP</div>
               </div>
-              <div class="admin-muted"><%= u.email %> · <%= u.total_xp %> XP</div>
-            </div>
-            <div class="admin-row-actions">
-              <% if (!u.is_admin) { %>
-                <% if (u.is_banned) { %>
-                  <form action="/admin/users/<%= u.id %>/unban" method="POST">
-                    <button class="nav-btn nav-btn-primary" type="submit">Unban</button>
-                  </form>
-                <% } else { %>
-                  <form action="/admin/users/<%= u.id %>/ban" method="POST" onsubmit="return confirm('Ban this user?');">
-                    <button class="nav-btn" type="submit" style="color: var(--danger); border-color: var(--danger);">Ban</button>
-                  </form>
+              <div class="admin-card-actions">
+                <% if (!u.is_admin) { %>
+                  <% if (u.is_banned) { %>
+                    <form action="/admin/users/<%= u.id %>/unban" method="POST">
+                      <button class="nav-btn nav-btn-primary" type="submit">Unban</button>
+                    </form>
+                  <% } else { %>
+                    <form action="/admin/users/<%= u.id %>/ban" method="POST" onsubmit="return confirm('Ban this user?');">
+                      <button class="nav-btn admin-btn-danger" type="submit">Ban</button>
+                    </form>
+                  <% } %>
                 <% } %>
-              <% } %>
+              </div>
             </div>
-          </div>
-        <% }) %>
-      </div>
+          <% }) %>
+        </div>
+      </section>
+
+      <% if (typeof totalPages !== "undefined" && totalPages > 1) { %>
+        <nav class="pagination admin-pagination" aria-label="Admin pages">
+          <% if (page > 1) { %>
+            <a class="nav-btn" href="/admin?tab=<%= activeTab %>&page=<%= page - 1 %>">← Prev</a>
+          <% } else { %>
+            <span class="nav-btn" style="opacity:0.4; pointer-events:none;">← Prev</span>
+          <% } %>
+          <span class="pagination-info">Page <%= page %> of <%= totalPages %> · <%= totalForTab %> total</span>
+          <% if (page < totalPages) { %>
+            <a class="nav-btn" href="/admin?tab=<%= activeTab %>&page=<%= page + 1 %>">Next →</a>
+          <% } else { %>
+            <span class="nav-btn" style="opacity:0.4; pointer-events:none;">Next →</span>
+          <% } %>
+        </nav>
+      <% } %>
     </div>
-      <script src="/js/nav.js"></script>
-  </body>
+    <script src="/js/nav.js"></script>
+
+<script>
+(function () {
+  function filterPanel(name, query) {
+    var panel = document.querySelector('.admin-panel[data-admin-panel="' + name + '"]');
+    if (!panel) return;
+    var q = (query || "").trim().toLowerCase();
+    var visible = 0;
+    panel.querySelectorAll("[data-admin-item]").forEach(function (item) {
+      var text = (item.textContent || "").toLowerCase();
+      var match = !q || text.indexOf(q) !== -1;
+      item.style.display = match ? "" : "none";
+      if (match) visible += 1;
+    });
+    var countEl = document.querySelector('[data-admin-count="' + name + '"]');
+    if (countEl) countEl.textContent = String(visible);
+    var empty = panel.querySelector(".admin-filter-empty");
+    if (!empty) {
+      empty = document.createElement("div");
+      empty.className = "admin-empty admin-filter-empty";
+      empty.textContent = "No matches on this page.";
+      var list = panel.querySelector(".admin-card-list");
+      if (list && list.parentNode) list.parentNode.insertBefore(empty, list.nextSibling);
+      else panel.appendChild(empty);
+    }
+    empty.style.display = (visible === 0 && q) ? "" : "none";
+  }
+
+  document.addEventListener("input", function (e) {
+    if (!e.target || !e.target.classList || !e.target.classList.contains("admin-filter-input")) return;
+    filterPanel(e.target.getAttribute("data-admin-filter"), e.target.value);
+  });
+})();
+</script>
+</body>
 </html>

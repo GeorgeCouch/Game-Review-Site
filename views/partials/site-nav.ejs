@@ -1,89 +1,133 @@
-<nav class="navbar navbar-custom fixed-top site-nav" aria-label="Main">
-  <div class="container-fluid px-3 px-md-4 site-nav-bar">
+<nav class="site-nav" aria-label="Main" style="padding-top: env(safe-area-inset-top, 0px);">
+  <div class="site-nav-bar">
     <a class="navbar-brand" href="/" aria-label="GameCouch home">
       <img src="/favicon.svg" alt="" class="navbar-logo" width="28" height="28" />
       <span class="brand-text">Game<span class="brand-accent">Couch</span></span>
     </a>
 
-    <!-- Desktop links -->
     <div class="nav-desktop" role="navigation" aria-label="Primary">
-      <a href="/" class="nav-btn">Feed</a>
-      <a href="/activity" class="nav-btn">Activity</a>
-      <a href="/explore" class="nav-btn">Explore</a>
-      <a href="/search" class="nav-btn">Search</a>
-      <a href="/leaderboards" class="nav-btn">Leaderboards</a>
+      <div class="nav-primary">
+        <a href="/explore" class="nav-link nav-dest nav-dest-explore">Explore</a>
+        <a href="/activity" class="nav-link nav-dest nav-dest-activity">Activity</a>
+        <a href="/leaderboards" class="nav-link nav-dest nav-dest-boards">Boards</a>
+      </div>
 
-      <% if (typeof showSort !== "undefined" && showSort) { %>
-        <div class="dropdown">
-          <button
-            class="nav-btn dropdown-toggle"
-            type="button"
-            data-bs-toggle="dropdown"
-            aria-expanded="false"
-            aria-haspopup="true"
-            aria-label="Sort reviews"
-          >
-            Sort
-          </button>
-          <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end" role="menu" aria-label="Sort options">
-            <form action="/sort" method="post">
-              <li role="none"><button class="dropdown-item" type="submit" name="sort" value="rating" role="menuitem">Rating</button></li>
-              <li role="none"><button class="dropdown-item" type="submit" name="sort" value="completed" role="menuitem">Completed</button></li>
-              <li role="none"><button class="dropdown-item" type="submit" name="sort" value="released" role="menuitem">Released</button></li>
-            </form>
-          </ul>
+      <div class="nav-search-wrap" id="nav-search-wrap">
+        <div class="nav-search">
+          <svg class="nav-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="search"
+            id="nav-search-input"
+            class="nav-search-input"
+            placeholder="Search games or users…"
+            autocomplete="off"
+            aria-label="Search games or users"
+            aria-autocomplete="list"
+            aria-controls="nav-search-results"
+          />
         </div>
-      <% } %>
+        <div id="nav-search-results" class="nav-search-results" hidden role="listbox"></div>
+      </div>
 
-      <% if (typeof userlog !== "undefined" && userlog) { %>
-        <a href="/log" class="nav-btn nav-btn-primary">+ Log</a>
-        <a href="/add" class="nav-btn">Review</a>
-        <a href="/notifications" class="nav-btn notif-nav" aria-label="Notifications<%= typeof unreadNotifications !== 'undefined' && unreadNotifications > 0 ? ' (' + unreadNotifications + ' unread)' : '' %>">
-          Alerts
-          <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
-            <span class="notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
-          <% } %>
-        </a>
-        <% if (userlog.username) { %>
-          <a href="/u/<%= userlog.username %>" class="nav-btn">Profile</a>
+      <div class="nav-actions">
+<% if (typeof userlog !== "undefined" && userlog) { %>
+          <button type="button" class="nav-btn nav-btn-primary nav-cta" data-open-review-modal>+ Review</button>
+          <div class="nav-notif-menu" id="nav-notif-menu">
+            <button type="button" class="nav-icon-btn notif-nav" id="nav-notif-btn" aria-label="Notifications" title="Notifications" aria-expanded="false" aria-haspopup="true" aria-controls="nav-notif-dropdown">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
+                <span class="notif-badge" id="nav-notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
+              <% } else { %>
+                <span class="notif-badge" id="nav-notif-badge" hidden aria-hidden="true">0</span>
+              <% } %>
+            </button>
+            <div id="nav-notif-dropdown" class="nav-dropdown nav-notif-dropdown" role="menu" hidden>
+              <div class="nav-notif-head">
+                <strong>Notifications</strong>
+                <button type="button" class="nav-notif-clear" id="nav-notif-clear-all">Clear all</button>
+              </div>
+              <div class="nav-notif-list" id="nav-notif-list">
+                <div class="nav-notif-empty">Loading…</div>
+              </div>
+            </div>
+          </div>
+          <div class="nav-profile-menu" id="nav-profile-menu">
+            <button type="button" class="nav-profile-btn" id="nav-profile-btn" aria-expanded="false" aria-haspopup="true" aria-controls="nav-profile-dropdown" title="Account menu">
+              <% if (userlog.avatar_url) { %>
+                <img src="<%= userlog.avatar_url %>" alt="" class="nav-profile-avatar" />
+              <% } else { %>
+                <span class="nav-profile-fallback"><%= (userlog.display_name || userlog.username || "?").charAt(0).toUpperCase() %></span>
+              <% } %>
+            </button>
+            <div id="nav-profile-dropdown" class="nav-dropdown nav-profile-dropdown" role="menu" hidden>
+              <% if (userlog.username) { %>
+                <a href="/u/<%= userlog.username %>" role="menuitem">Profile</a>
+              <% } %>
+              <a href="/messages" role="menuitem">Messages</a>
+              <div class="nav-theme-row" role="menuitem">
+                <span class="nav-theme-toggle-label">Theme</span>
+                <button type="button" class="theme-switch" id="nav-theme-toggle" aria-label="Toggle light and dark mode" title="Toggle theme">
+                  <span class="theme-switch-icon theme-switch-sun" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+                    </svg>
+                  </span>
+                  <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
+                  <span class="theme-switch-icon theme-switch-moon" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/>
+                    </svg>
+                  </span>
+                </button>
+              </div>
+              <a href="/settings" role="menuitem">Settings</a>
+              <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
+                <a href="/admin" role="menuitem">Admin</a>
+              <% } %>
+              <a href="/logout" role="menuitem" class="nav-profile-logout">Logout</a>
+            </div>
+          </div>
         <% } else { %>
-          <a href="/profile/edit" class="nav-btn">Set Username</a>
+          <a href="/login" class="nav-btn nav-btn-primary nav-cta">Login</a>
+          <a href="/register" class="nav-link">Register</a>
         <% } %>
-        <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
-          <a href="/admin" class="nav-btn">Admin</a>
-        <% } %>
-        <a href="/logout" class="nav-btn">Logout</a>
-      <% } else { %>
-        <a href="/login" class="nav-btn nav-btn-primary">Login</a>
-      <% } %>
+      </div>
     </div>
 
-    <!-- Mobile: primary action + menu button -->
-    <div class="nav-mobile-tools">
+    <div class="nav-mobile-right">
       <% if (typeof userlog !== "undefined" && userlog) { %>
-        <a href="/log" class="nav-btn nav-btn-primary nav-mobile-log">+ Log</a>
-        <a
-          href="/notifications"
-          class="nav-btn notif-nav nav-mobile-alerts"
-          aria-label="Notifications<%= typeof unreadNotifications !== 'undefined' && unreadNotifications > 0 ? ' (' + unreadNotifications + ' unread)' : '' %>"
-        >
-          <span aria-hidden="true">🔔</span>
-          <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
-            <span class="notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
-          <% } %>
-        </a>
+        <button type="button" class="nav-btn nav-btn-primary nav-cta-mobile" data-open-review-modal>+ Review</button>
+        <div class="nav-notif-menu nav-notif-menu-mobile">
+          <button type="button" class="nav-icon-btn notif-nav" aria-label="Notifications" title="Notifications" aria-expanded="false" aria-haspopup="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
+              <span class="notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
+            <% } else { %>
+              <span class="notif-badge" hidden aria-hidden="true">0</span>
+            <% } %>
+          </button>
+          <div class="nav-dropdown nav-notif-dropdown" role="menu" hidden>
+            <div class="nav-notif-head">
+              <strong>Notifications</strong>
+              <button type="button" class="nav-notif-clear">Clear all</button>
+            </div>
+            <div class="nav-notif-list">
+              <div class="nav-notif-empty">Loading…</div>
+            </div>
+          </div>
+        </div>
       <% } else { %>
-        <a href="/login" class="nav-btn nav-btn-primary">Login</a>
+        <a href="/login" class="nav-btn nav-btn-primary nav-cta-mobile">Login</a>
       <% } %>
-      <button
-        type="button"
-        class="nav-burger"
-        id="nav-burger"
-        aria-label="Open menu"
-        aria-expanded="false"
-        aria-controls="nav-drawer"
-        aria-haspopup="true"
-      >
+      <button type="button" class="nav-burger" id="nav-burger" aria-label="Open menu" aria-expanded="false" aria-controls="nav-drawer" aria-haspopup="true">
         <span aria-hidden="true"></span>
         <span aria-hidden="true"></span>
         <span aria-hidden="true"></span>
@@ -91,51 +135,68 @@
     </div>
   </div>
 
-  <!-- Mobile drawer -->
-  <div
-    class="nav-drawer"
-    id="nav-drawer"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Site menu"
-    hidden
-  >
+  <div class="nav-drawer" id="nav-drawer" role="dialog" aria-modal="true" aria-label="Site menu" hidden>
     <div class="nav-drawer-inner" role="navigation" aria-label="Mobile">
-      <a href="/" class="nav-drawer-link">Feed</a>
-      <a href="/activity" class="nav-drawer-link">Activity</a>
+      <div class="nav-search-wrap nav-search-wrap-mobile" id="nav-search-wrap-mobile">
+        <div class="nav-search">
+          <svg class="nav-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="search"
+            id="nav-search-input-mobile"
+            class="nav-search-input"
+            placeholder="Search games or users…"
+            autocomplete="off"
+            aria-label="Search games or users"
+          />
+        </div>
+        <div id="nav-search-results-mobile" class="nav-search-results nav-search-results-mobile" hidden role="listbox"></div>
+      </div>
+      <a href="/feed" class="nav-drawer-link">Feed</a>
       <a href="/explore" class="nav-drawer-link">Explore</a>
-      <a href="/search" class="nav-drawer-link">Search</a>
+      <a href="/activity" class="nav-drawer-link">Activity</a>
       <a href="/leaderboards" class="nav-drawer-link">Leaderboards</a>
+      <a href="/messages" class="nav-drawer-link">Messages</a>
       <% if (typeof userlog !== "undefined" && userlog) { %>
-        <a href="/log" class="nav-drawer-link">Quick Log</a>
-        <a href="/add" class="nav-drawer-link">Write Review</a>
-        <a href="/notifications" class="nav-drawer-link">
-          Notifications
-          <% if (typeof unreadNotifications !== "undefined" && unreadNotifications > 0) { %>
-            <span class="notif-badge" aria-hidden="true"><%= unreadNotifications > 9 ? "9+" : unreadNotifications %></span>
-            <span class="visually-hidden"><%= unreadNotifications %> unread</span>
-          <% } %>
-        </a>
+        <div class="nav-drawer-divider"></div>
+        <button type="button" class="nav-drawer-link" data-open-review-modal style="width:100%;text-align:left;background:transparent;border:none;cursor:pointer;font:inherit;color:inherit;">Write Review</button>
+        <a href="/settings#notifications" class="nav-drawer-link">Push alerts</a>
+        <a href="/settings" class="nav-drawer-link">Settings</a>
+        <div class="nav-drawer-theme">
+          <span>Theme</span>
+          <button type="button" class="theme-switch" id="nav-theme-toggle-mobile" aria-label="Toggle light and dark mode">
+            <span class="theme-switch-icon theme-switch-sun" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+              </svg>
+            </span>
+            <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
+            <span class="theme-switch-icon theme-switch-moon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/>
+              </svg>
+            </span>
+          </button>
+        </div>
         <% if (userlog.username) { %>
           <a href="/u/<%= userlog.username %>" class="nav-drawer-link">Profile</a>
-        <% } else { %>
-          <a href="/profile/edit" class="nav-drawer-link">Set Username</a>
         <% } %>
         <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
           <a href="/admin" class="nav-drawer-link">Admin</a>
         <% } %>
         <a href="/logout" class="nav-drawer-link">Logout</a>
       <% } else { %>
+        <div class="nav-drawer-divider"></div>
         <a href="/login" class="nav-drawer-link">Login</a>
         <a href="/register" class="nav-drawer-link">Register</a>
       <% } %>
     </div>
   </div>
 </nav>
-<div
-  class="nav-backdrop"
-  id="nav-backdrop"
-  hidden
-  tabindex="-1"
-  aria-hidden="true"
-></div>
+<div class="nav-backdrop" id="nav-backdrop" hidden tabindex="-1" aria-hidden="true"></div>
+
+<%- include("add-review-modal") %>
+<%- include("edit-review-modal") %>
+<%- include("report-modal") %>
+<%- include("add-list-modal") %>

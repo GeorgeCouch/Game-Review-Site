@@ -1,17 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Edit Profile – GameCouch</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-      crossorigin="anonymous"
-    />
-    <link rel="stylesheet" href="/styles/styles.css" />
+    <title>Settings – GameCouch</title>
+    <%- include('partials/head') %>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css"
@@ -19,11 +10,33 @@
   </head>
   <body>
     <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
-<div class="page-wrapper">
-      <div class="form-card" style="max-width: 520px;">
-        <h1>Edit Profile</h1>
 
-        <% if (typeof error !== "undefined" && error) { %>
+<div class="page-wrapper settings-page">
+  <div class="settings-layout settings-layout-top">
+    <div class="page-header settings-page-header">
+      <div>
+        <h1>Settings</h1>
+        <p>Manage your profile, photos, security, and account</p>
+      </div>
+      <a href="/u/<%= user.username %>" class="nav-btn">← Profile</a>
+    </div>
+
+    <div class="admin-tabs settings-tabs" role="tablist">
+      <button type="button" class="admin-tab active" data-settings-tab="profile" role="tab">Profile</button>
+      <button type="button" class="admin-tab" data-settings-tab="photos" role="tab">Photos</button>
+      <button type="button" class="admin-tab" data-settings-tab="notifications" role="tab">Notifications</button>
+      <button type="button" class="admin-tab" data-settings-tab="security" role="tab">Security</button>
+      <button type="button" class="admin-tab settings-tab-danger" data-settings-tab="danger" role="tab">Danger Zone</button>
+    </div>
+
+    <div class="settings-main">
+      <div class="settings-panel active" data-settings-panel="profile">
+        <div class="settings-panel-card">
+          <div class="settings-panel-header">
+            <h2>Profile</h2>
+            <p>How you appear across GameCouch</p>
+          </div>
+          <% if (typeof error !== "undefined" && error) { %>
           <div class="alert alert-danger" style="background: rgba(255,92,92,0.15); border: 1px solid var(--danger); color: #ff8a8a; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1.25rem;">
             <%= error %>
           </div>
@@ -34,8 +47,7 @@
             <%= success %>
           </div>
         <% } %>
-
-        <form action="/profile/edit" method="POST">
+          <form action="/profile/edit" method="POST">
           <div class="mb-3">
             <label class="form-label">Username</label>
             <div class="input-group">
@@ -81,6 +93,55 @@
           </div>
 
           <div class="mb-3">
+            <label class="form-label">Pronouns (optional)</label>
+            <input class="form-control" type="text" name="pronouns" value="<%= user.pronouns || '' %>" maxlength="40" placeholder="they/them, she/her, he/him…" />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Location (optional)</label>
+            <input class="form-control" type="text" name="location" value="<%= user.location || '' %>" maxlength="80" placeholder="City, country" />
+          </div>
+
+          <div class="mb-3 fav-game-field">
+            <label class="form-label">Favorite game (optional)</label>
+            <input type="hidden" name="favorite_game" id="fav-title" value="<%= user.favorite_game || '' %>" />
+            <input type="hidden" name="favorite_game_id" id="fav-id" value="<%= user.favorite_game_id || '' %>" />
+            <input type="hidden" name="favorite_game_cover" id="fav-cover" value="<%= user.favorite_game_cover || '' %>" />
+
+            <div class="fav-game-card">
+              <div id="fav-selected" class="fav-selected" style="<%= user.favorite_game ? 'display:flex;' : 'display:none;' %>">
+                <div class="fav-selected-art">
+                  <img id="fav-selected-cover" src="<%= user.favorite_game_cover || '' %>" alt="" style="<%= user.favorite_game_cover ? '' : 'display:none;' %>" />
+                  <div id="fav-selected-placeholder" class="fav-selected-placeholder" style="<%= user.favorite_game_cover ? 'display:none;' : (user.favorite_game ? 'display:flex;' : 'display:none;') %>">?</div>
+                </div>
+                <div class="fav-selected-body">
+                  <div class="fav-selected-label">Your pick</div>
+                  <div id="fav-selected-title" class="fav-selected-title"><%= user.favorite_game || '' %></div>
+                  <button type="button" class="nav-btn fav-clear-btn" id="fav-clear">Clear</button>
+                </div>
+              </div>
+
+              <div id="fav-search-wrap" class="fav-search-wrap" style="<%= user.favorite_game ? 'display:none;' : '' %>">
+                <div class="fav-search-box">
+                  <svg class="fav-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <input
+                    class="form-control fav-search-input"
+                    type="text"
+                    id="fav-search"
+                    placeholder="Search games…"
+                    autocomplete="off"
+                  />
+                </div>
+                <div id="fav-status" class="fav-status"></div>
+                <div id="fav-results" class="search-results fav-results"></div>
+              </div>
+            </div>
+          </div>
+
+          <h2 class="settings-section-title settings-section-spaced">Social links</h2>
+          <div class="mb-3">
             <label class="form-label">Twitch username (optional)</label>
             <div class="input-group">
               <span class="input-group-text" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 10px 0 0 10px;">twitch.tv/</span>
@@ -125,76 +186,291 @@
               />
             </div>
           </div>
-
-          <div class="mb-3">
-            <label class="form-label">Avatar URL (optional)</label>
-            <input
-              class="form-control"
-              type="url"
-              name="avatar_url"
-              value="<%= user.avatar_url || '' %>"
-              placeholder="https://example.com/avatar.jpg"
-            />
-            <small style="color: var(--text-muted); font-size: 0.8rem;">
-              Or paste a direct image link instead of uploading.
-            </small>
-          </div>
-
-          <button type="submit" class="btn-submit">Save Changes</button>
+<button type="submit" class="btn-submit">Save Changes</button>
         </form>
+        </div>
+      </div>
 
-        <div class="avatar-upload-card">
-          <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem;">Profile photo</h2>
-          <div class="avatar-upload-preview">
-            <% if (user.avatar_url) { %>
-              <img src="<%= user.avatar_url %>" alt="Current avatar" id="avatar-current" />
-            <% } else { %>
-              <div class="avatar-upload-placeholder" id="avatar-preview-placeholder">
-                <%= (user.display_name || user.username || "?").charAt(0).toUpperCase() %>
-              </div>
-            <% } %>
+      <div class="settings-panel" data-settings-panel="photos" hidden>
+        <div class="settings-panel-card">
+          <div class="settings-panel-header">
+            <h2>Photos</h2>
+            <p>Update how your profile looks to others</p>
           </div>
 
-          <input
-            class="form-control"
-            type="file"
-            name="avatar"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            id="avatar-input"
-          />
-          <small style="color: var(--text-muted); font-size: 0.8rem; display:block; margin: 0.4rem 0 0.75rem;">
-            Choose a photo, crop it to a square, then save · max 5 MB
-          </small>
+          <div class="photos-preview-card">
+            <div class="photos-preview-banner">
+              <% if (user.banner_url) { %>
+                <img src="<%= user.banner_url %>" alt="" id="banner-current-preview" />
+              <% } else { %>
+                <div class="photos-preview-banner-empty">Banner preview</div>
+              <% } %>
+            </div>
+            <div class="photos-preview-avatar-wrap">
+              <% if (user.avatar_url) { %>
+                <img src="<%= user.avatar_url %>" alt="Current avatar" id="avatar-current" class="photos-preview-avatar" />
+              <% } else { %>
+                <div class="photos-preview-avatar photos-preview-avatar-fallback" id="avatar-preview-placeholder">
+                  <%= (user.display_name || user.username || "?").charAt(0).toUpperCase() %>
+                </div>
+              <% } %>
+            </div>
+            <div class="photos-preview-meta">
+              <div class="photos-preview-name"><%= user.display_name || user.username %></div>
+              <div class="photos-preview-handle">@<%= user.username %></div>
+            </div>
+          </div>
 
-          <!-- Cropper panel (hidden until file selected) -->
-          <div id="crop-panel" class="crop-panel" style="display: none;">
-            <div class="crop-stage">
-              <img id="crop-image" alt="Crop preview" />
-            </div>
-            <div class="crop-actions">
-              <button type="button" class="nav-btn" id="crop-cancel">Cancel</button>
-              <button type="button" class="nav-btn nav-btn-primary" id="crop-save">Save cropped photo</button>
-            </div>
-            <div id="crop-status" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;"></div>
+                                        <div class="photos-grid">
+            <section class="photos-section">
+              <div class="photos-section-head">
+                <h3>Profile photo</h3>
+                <p>Square crop · JPG, PNG, GIF, WebP · max 5 MB</p>
+              </div>
+
+              <label class="photos-file-label" for="avatar-input">
+                <span class="photos-file-btn">Choose photo</span>
+                <span class="photos-file-hint" id="avatar-file-hint">Select a photo to crop it</span>
+              </label>
+              <input
+                class="photos-file-input"
+                type="file"
+                name="avatar"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                id="avatar-input"
+              />
+              <div id="avatar-ready-preview" class="avatar-ready-preview" hidden>
+                <img id="avatar-ready-img" alt="Cropped preview" />
+                <span>Cropped and ready to upload</span>
+              </div>
+              <button type="button" class="btn-submit photos-submit" id="avatar-upload-btn" disabled>Upload photo</button>
+              <% if (user.avatar_url) { %>
+                <form action="/profile/avatar/remove" method="POST" class="photos-remove-form">
+                  <button type="submit" class="nav-btn photos-remove-btn">Remove photo</button>
+                </form>
+              <% } %>
+              <div id="crop-status" class="photos-status"></div>
+            </section>
+
+            <section class="photos-section">
+              <div class="photos-section-head">
+                <h3>Profile banner</h3>
+                <p>Wide image · cropped to 1500×500 · max 8 MB</p>
+              </div>
+
+              <form action="/profile/banner" method="POST" enctype="multipart/form-data" class="photos-banner-form">
+                <label class="photos-file-label" for="banner-input">
+                  <span class="photos-file-btn">Choose banner</span>
+                  <span class="photos-file-hint" id="banner-file-name">No file selected</span>
+                </label>
+                <input
+                  class="photos-file-input"
+                  type="file"
+                  name="banner"
+                  id="banner-input"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  required
+                />
+                <button type="submit" class="btn-submit photos-submit" id="banner-upload-btn" disabled>Upload banner</button>
+              </form>
+              <% if (user.banner_url) { %>
+                <form action="/profile/banner/remove" method="POST" class="photos-remove-form">
+                  <button type="submit" class="nav-btn photos-remove-btn">Remove banner</button>
+                </form>
+              <% } %>
+            </section>
+          </div>
+
+        </div>
+      </div>
+
+      
+      <div class="settings-panel" data-settings-panel="notifications" hidden>
+        <div class="settings-panel-card">
+          <div class="settings-panel-header">
+            <h2>Push notifications</h2>
+            <p>Browser alerts for likes, follows, and comments</p>
+          </div>
+          <div class="settings-inner settings-push-box">
+            <p class="photos-help">Enable alerts on this device. You can turn them off anytime in your browser settings.</p>
+            <button type="button" class="nav-btn nav-btn-primary" id="enable-push">Enable push alerts</button>
+            <div id="push-status" class="push-status" style="margin-top:0.65rem;"></div>
           </div>
         </div>
+      </div>
 
+      <div class="settings-panel" data-settings-panel="security" hidden>
+        <div class="settings-panel-card">
+          <div class="settings-panel-header">
+            <h2>Security</h2>
+            <p>Password and account access</p>
+          </div>
+          <% const canChangePassword = user.password && String(user.password).startsWith("$2"); %>
+      <% if (canChangePassword) { %>
+      <div class="settings-inner">
+        <h3 class="settings-subhead">Change password</h3>
+        <% if (typeof passwordError !== "undefined" && passwordError) { %>
+          <div style="background: rgba(255,92,92,0.15); border: 1px solid var(--danger); color: #ff8a8a; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+            <%= passwordError %>
+          </div>
+        <% } %>
+        <% if (typeof passwordSuccess !== "undefined" && passwordSuccess) { %>
+          <div style="background: rgba(79,140,255,0.15); border: 1px solid var(--accent); color: #8bb4ff; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+            <%= passwordSuccess %>
+          </div>
+        <% } %>
+        <form action="/account/password" method="POST">
+          <div class="mb-3">
+            <label class="form-label">Current password</label>
+            <input class="form-control" type="password" name="current_password" autocomplete="current-password" required />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">New password</label>
+            <input class="form-control" type="password" name="new_password" autocomplete="new-password" minlength="6" required />
+            <small style="color: var(--text-muted); font-size: 0.8rem;">At least 6 characters</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Confirm new password</label>
+            <input class="form-control" type="password" name="confirm_password" autocomplete="new-password" minlength="6" required />
+          </div>
+          <button type="submit" class="btn-submit">Update password</button>
+        </form>
+      </div>
+      <% } %>
+
+      
+        </div>
+      </div>
+
+      <div class="settings-panel" data-settings-panel="danger" hidden>
+        <div class="settings-panel-card settings-panel-danger">
+          <div class="settings-panel-header">
+            <h2>Danger Zone</h2>
+            <p>Permanent account actions</p>
+          </div>
+          <div class="settings-inner">
+        
+        <p class="danger-zone-text">
+          Permanently delete your GameCouch account and all associated data
+          (reviews, lists, likes, messages, and profile). This cannot be undone.
+        </p>
+        <% if (typeof deleteError !== "undefined" && deleteError) { %>
+          <div style="background: rgba(255,92,92,0.15); border: 1px solid var(--danger); color: #ff8a8a; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+            <%= deleteError %>
+          </div>
+        <% } %>
+        <form action="/account/delete" method="POST" id="delete-account-form" onsubmit="return confirmDeleteAccount(event);">
+          <div class="mb-3">
+            <label class="form-label">Type your username to confirm</label>
+            <input
+              class="form-control"
+              type="text"
+              name="confirm_username"
+              autocomplete="off"
+              placeholder="@<%= user.username || '' %>"
+              required
+            />
+          </div>
+          <% const needsPassword = user.password && String(user.password).startsWith("$2"); %>
+          <% if (needsPassword) { %>
+            <div class="mb-3">
+              <label class="form-label">Password</label>
+              <input class="form-control" type="password" name="password" autocomplete="current-password" required />
+            </div>
+          <% } %>
+          <button type="submit" class="btn-danger-solid">Delete my account</button>
+        </form>
+      </div>
+
+      <script>
+        function confirmDeleteAccount(e) {
+          const ok = window.confirm(
+            "This will permanently delete your account and all of your data. This cannot be undone.\n\nContinue?"
+          );
+          if (!ok) {
+            e.preventDefault();
+            return false;
+          }
+          return true;
+        }
+      </script>
+
+  
+
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+    <div class="gc-modal" id="avatar-crop-modal" hidden aria-hidden="true">
+      <div class="gc-modal-backdrop" data-close-avatar-crop></div>
+      <div class="gc-modal-dialog lb-modal-dialog avatar-crop-dialog" role="dialog" aria-modal="true" aria-labelledby="avatar-crop-title">
+        <div class="gc-modal-header">
+          <div>
+            <h2 id="avatar-crop-title">Crop profile photo</h2>
+            <p>Drag to reposition · zoom with scroll if needed</p>
+          </div>
+          <button type="button" class="gc-modal-close" data-close-avatar-crop aria-label="Close">&times;</button>
+        </div>
+        <div class="gc-modal-body">
+          <div class="avatar-crop-stage">
+            <img id="crop-image" alt="Crop preview" />
+          </div>
+          <div class="report-modal-actions" style="margin-top:1rem;">
+            <button type="button" class="nav-btn" data-close-avatar-crop id="crop-cancel">Cancel</button>
+            <button type="button" class="nav-btn nav-btn-primary" id="crop-confirm">Confirm crop</button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
     <script>
       (function () {
         const input = document.getElementById("avatar-input");
-        const panel = document.getElementById("crop-panel");
+        const modal = document.getElementById("avatar-crop-modal");
         const image = document.getElementById("crop-image");
         const statusEl = document.getElementById("crop-status");
-        const btnSave = document.getElementById("crop-save");
-        const btnCancel = document.getElementById("crop-cancel");
+        const btnConfirm = document.getElementById("crop-confirm");
+        const btnUpload = document.getElementById("avatar-upload-btn");
+        const readyWrap = document.getElementById("avatar-ready-preview");
+        const readyImg = document.getElementById("avatar-ready-img");
+        const hint = document.getElementById("avatar-file-hint");
         let cropper = null;
         let objectUrl = null;
+        let croppedBlob = null;
+        let readyPreviewUrl = null;
 
-        function destroyCropper() {
+        if (!input || !modal || !image) return;
+
+        function openModal() {
+          modal.hidden = false;
+          modal.setAttribute("aria-hidden", "false");
+          document.body.classList.add("gc-modal-open");
+          modal.classList.remove("is-closing");
+          void modal.offsetWidth;
+          modal.classList.add("is-open");
+        }
+
+        function closeModal() {
+          if (!modal || modal.hidden) return;
+          modal.classList.remove("is-open");
+          modal.classList.add("is-closing");
+          const done = () => {
+            modal.hidden = true;
+            modal.classList.remove("is-closing");
+            modal.setAttribute("aria-hidden", "true");
+            document.body.classList.remove("gc-modal-open");
+            modal.removeEventListener("animationend", done);
+            destroyCropper(false);
+          };
+          modal.addEventListener("animationend", done);
+          setTimeout(done, 220);
+        }
+
+        function destroyCropper(clearInput) {
           if (cropper) {
             cropper.destroy();
             cropper = null;
@@ -204,27 +480,40 @@
             objectUrl = null;
           }
           image.removeAttribute("src");
-          panel.style.display = "none";
-          statusEl.textContent = "";
-          btnSave.disabled = false;
+          if (clearInput) {
+            input.value = "";
+            if (hint) hint.textContent = "Select a photo to crop it";
+          }
+        }
+
+        function clearReady() {
+          croppedBlob = null;
+          if (readyPreviewUrl) {
+            URL.revokeObjectURL(readyPreviewUrl);
+            readyPreviewUrl = null;
+          }
+          if (readyWrap) readyWrap.hidden = true;
+          if (readyImg) readyImg.removeAttribute("src");
+          if (btnUpload) btnUpload.disabled = true;
         }
 
         input.addEventListener("change", function () {
           const file = input.files && input.files[0];
           if (!file) return;
-
           if (file.size > 5 * 1024 * 1024) {
             alert("Image must be under 5 MB.");
             input.value = "";
             return;
           }
-
-          destroyCropper();
+          clearReady();
+          destroyCropper(false);
           objectUrl = URL.createObjectURL(file);
           image.src = objectUrl;
-          panel.style.display = "block";
+          openModal();
+          if (hint) hint.textContent = file.name;
 
           image.onload = function () {
+            if (cropper) cropper.destroy();
             cropper = new Cropper(image, {
               aspectRatio: 1,
               viewMode: 1,
@@ -237,86 +526,289 @@
               highlight: false,
               cropBoxMovable: true,
               cropBoxResizable: true,
+              toggleDragModeOnDblclick: false,
+              ready: function () {
+                try {
+                  document.querySelectorAll(".avatar-crop-stage .cropper-view-box, .avatar-crop-stage .cropper-face").forEach((el) => {
+                    el.style.borderRadius = "50%";
+                  });
+                  const imageData = cropper.getImageData();
+                  const containerData = cropper.getContainerData();
+                  const size = Math.min(containerData.width, containerData.height) * 0.9;
+                  const left = (containerData.width - size) / 2;
+                  const top = (containerData.height - size) / 2;
+                  cropper.setCropBoxData({ left, top, width: size, height: size });
+                } catch (e) {}
+              }
             });
           };
         });
 
-        btnCancel.addEventListener("click", function () {
-          destroyCropper();
-          input.value = "";
+        function onCancel() {
+          closeModal();
+          destroyCropper(true);
+          clearReady();
+          if (statusEl) statusEl.textContent = "";
+        }
+
+        document.addEventListener("click", function (e) {
+          if (e.target.closest("[data-close-avatar-crop]")) {
+            e.preventDefault();
+            onCancel();
+          }
         });
 
-        btnSave.addEventListener("click", function () {
-          if (!cropper) return;
-          btnSave.disabled = true;
-          statusEl.textContent = "Uploading…";
-
-          // Export a square canvas; server will finalize to 256 WebP
-          const canvas = cropper.getCroppedCanvas({
-            width: 512,
-            height: 512,
-            imageSmoothingEnabled: true,
-            imageSmoothingQuality: "high",
-          });
-
-          if (!canvas) {
-            statusEl.textContent = "Could not crop image.";
-            btnSave.disabled = false;
-            return;
-          }
-
-          canvas.toBlob(
-            async function (blob) {
+        if (btnConfirm) {
+          btnConfirm.addEventListener("click", function () {
+            if (!cropper) return;
+            const canvas = cropper.getCroppedCanvas({
+              width: 512,
+              height: 512,
+              imageSmoothingEnabled: true,
+              imageSmoothingQuality: "high",
+            });
+            if (!canvas) {
+              if (statusEl) statusEl.textContent = "Could not crop image.";
+              return;
+            }
+            canvas.toBlob(function (blob) {
               if (!blob) {
-                statusEl.textContent = "Could not process image.";
-                btnSave.disabled = false;
+                if (statusEl) statusEl.textContent = "Could not process image.";
                 return;
               }
-              try {
-                const form = new FormData();
-                form.append("avatar", blob, "avatar.png");
-                const res = await fetch("/profile/avatar", {
-                  method: "POST",
-                  body: form,
-                  headers: { Accept: "application/json" },
-                });
-
-                // Server currently renders HTML; follow redirect / reload on success
-                if (res.redirected) {
-                  window.location.href = res.url;
-                  return;
+              croppedBlob = blob;
+              if (readyPreviewUrl) URL.revokeObjectURL(readyPreviewUrl);
+              readyPreviewUrl = URL.createObjectURL(blob);
+              if (readyImg) readyImg.src = readyPreviewUrl;
+              if (readyWrap) readyWrap.hidden = false;
+              if (btnUpload) btnUpload.disabled = false;
+              if (statusEl) statusEl.textContent = "";
+              if (hint) hint.textContent = "Crop confirmed — click Upload photo";
+              // close modal but keep input name for reference
+              modal.classList.remove("is-open");
+              modal.classList.add("is-closing");
+              const done = () => {
+                modal.hidden = true;
+                modal.classList.remove("is-closing");
+                modal.setAttribute("aria-hidden", "true");
+                document.body.classList.remove("gc-modal-open");
+                modal.removeEventListener("animationend", done);
+                if (cropper) {
+                  cropper.destroy();
+                  cropper = null;
                 }
-
-                const contentType = res.headers.get("content-type") || "";
-                if (contentType.includes("application/json")) {
-                  const data = await res.json();
-                  if (data.ok) {
-                    window.location.reload();
-                    return;
-                  }
-                  statusEl.textContent = data.error || "Upload failed.";
-                  btnSave.disabled = false;
-                  return;
+                if (objectUrl) {
+                  URL.revokeObjectURL(objectUrl);
+                  objectUrl = null;
                 }
+                image.removeAttribute("src");
+              };
+              modal.addEventListener("animationend", done);
+              setTimeout(done, 220);
+            }, "image/png");
+          });
+        }
 
-                // HTML response from server — treat as success and reload edit page
-                if (res.ok) {
-                  window.location.href = "/profile/edit";
-                  return;
-                }
-                statusEl.textContent = "Upload failed.";
-                btnSave.disabled = false;
-              } catch (err) {
-                statusEl.textContent = "Upload error. Try again.";
-                btnSave.disabled = false;
+        if (btnUpload) {
+          btnUpload.addEventListener("click", async function () {
+            if (!croppedBlob) return;
+            btnUpload.disabled = true;
+            if (statusEl) statusEl.textContent = "Uploading…";
+            try {
+              const form = new FormData();
+              form.append("avatar", croppedBlob, "avatar.png");
+              const res = await fetch("/profile/avatar", {
+                method: "POST",
+                body: form,
+                headers: { Accept: "application/json" },
+              });
+              if (res.redirected) {
+                window.location.href = res.url;
+                return;
               }
-            },
-            "image/png",
-            0.92
-          );
+              const contentType = res.headers.get("content-type") || "";
+              if (contentType.includes("application/json")) {
+                const data = await res.json();
+                if (data.ok) {
+                  window.location.href = "/profile/edit#photos";
+                  window.location.reload();
+                  return;
+                }
+                if (statusEl) statusEl.textContent = data.error || "Upload failed.";
+                btnUpload.disabled = false;
+                return;
+              }
+              if (res.ok) {
+                window.location.href = "/profile/edit#photos";
+                return;
+              }
+              if (statusEl) statusEl.textContent = "Upload failed.";
+              btnUpload.disabled = false;
+            } catch (err) {
+              if (statusEl) statusEl.textContent = "Upload error. Try again.";
+              btnUpload.disabled = false;
+            }
+          });
+        }
+
+        window.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && modal && !modal.hidden) onCancel();
         });
       })();
     </script>
+
+      <script src="/js/push.js"></script>
       <script src="/js/nav.js"></script>
-  </body>
+  
+    <script>
+      (function () {
+        const search = document.getElementById("fav-search");
+        const results = document.getElementById("fav-results");
+        const status = document.getElementById("fav-status");
+        const selected = document.getElementById("fav-selected");
+        const clearBtn = document.getElementById("fav-clear");
+        if (!search) return;
+        let timer = null;
+
+        function escapeHtml(str) {
+          return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function pick(game) {
+          document.getElementById("fav-title").value = game.name || "";
+          document.getElementById("fav-id").value = game.id || "";
+          document.getElementById("fav-cover").value = game.cover || "";
+          document.getElementById("fav-selected-title").textContent = game.name || "";
+          const img = document.getElementById("fav-selected-cover");
+          const ph = document.getElementById("fav-selected-placeholder");
+          if (game.cover) {
+            img.src = game.cover;
+            img.style.display = "block";
+            if (ph) ph.style.display = "none";
+          } else {
+            img.removeAttribute("src");
+            img.style.display = "none";
+            if (ph) ph.style.display = "flex";
+          }
+          selected.style.display = "flex";
+          const searchWrap = document.getElementById("fav-search-wrap");
+          if (searchWrap) searchWrap.style.display = "none";
+          search.value = "";
+          results.innerHTML = "";
+          status.textContent = "";
+        }
+
+        clearBtn && clearBtn.addEventListener("click", () => {
+          document.getElementById("fav-title").value = "";
+          document.getElementById("fav-id").value = "";
+          document.getElementById("fav-cover").value = "";
+          selected.style.display = "none";
+          const searchWrap = document.getElementById("fav-search-wrap");
+          if (searchWrap) searchWrap.style.display = "";
+          search.value = "";
+          results.innerHTML = "";
+          status.textContent = "";
+          search.focus();
+        });
+
+        search.addEventListener("input", () => {
+          clearTimeout(timer);
+          const q = search.value.trim();
+          if (q.length < 2) {
+            results.innerHTML = "";
+            status.textContent = "";
+            return;
+          }
+          status.textContent = "Searching…";
+          timer = setTimeout(async () => {
+            try {
+              const res = await fetch("/api/games/search?q=" + encodeURIComponent(q));
+              const data = await res.json();
+              if (!res.ok) {
+                status.textContent = data.error || "Search failed";
+                results.innerHTML = "";
+                return;
+              }
+              const list = data.results || [];
+              status.textContent = list.length ? list.length + " result(s)" : "No games found";
+              results.innerHTML = list
+                .map(
+                  (g) =>
+                    `<button type="button" class="search-result-item" data-id="${g.id}">
+                      ${g.cover ? `<img src="${g.cover}" alt="" />` : `<div class="search-result-placeholder"></div>`}
+                      <div>
+                        <div class="search-result-name">${escapeHtml(g.name)}</div>
+                        <div class="search-result-meta">${g.released ? new Date(g.released).getFullYear() : "—"}</div>
+                      </div>
+                    </button>`
+                )
+                .join("");
+              results.querySelectorAll(".search-result-item").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                  const id = parseInt(btn.dataset.id, 10);
+                  const game = list.find((x) => x.id === id);
+                  if (game) pick(game);
+                });
+              });
+            } catch (e) {
+              status.textContent = "Search error";
+              results.innerHTML = "";
+            }
+          }, 300);
+        });
+      })();
+    </script>
+
+
+
+      
+
+  <script>
+  (function () {
+    var input = document.getElementById("banner-input");
+    var label = document.getElementById("banner-file-name");
+    var btn = document.getElementById("banner-upload-btn");
+    function sync() {
+      var has = !!(input && input.files && input.files[0]);
+      if (label) label.textContent = has ? input.files[0].name : "No file selected";
+      if (btn) btn.disabled = !has;
+    }
+    if (input) {
+      input.addEventListener("change", sync);
+      sync();
+    }
+  })();
+  </script>
+
+  <script>
+  (function () {
+    var items = document.querySelectorAll("[data-settings-tab]");
+    var panels = document.querySelectorAll("[data-settings-panel]");
+    function show(name) {
+      panels.forEach(function (p) {
+        var on = p.getAttribute("data-settings-panel") === name;
+        p.hidden = !on;
+        p.classList.toggle("active", on);
+      });
+      items.forEach(function (b) {
+        b.classList.toggle("active", b.getAttribute("data-settings-tab") === name);
+      });
+      try { history.replaceState(null, "", "#" + name); } catch (e) {}
+    }
+    items.forEach(function (b) {
+      b.addEventListener("click", function () {
+        show(b.getAttribute("data-settings-tab"));
+      });
+    });
+    var hash = (location.hash || "").replace("#", "");
+    if (hash && document.querySelector('[data-settings-panel="' + hash + '"]')) show(hash);
+    else show("profile");
+  })();
+  </script>
+</div>
+</body>
 </html>

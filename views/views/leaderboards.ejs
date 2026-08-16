@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Leaderboards – GameCouch</title>
+    <%- include('partials/head') %>
+  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
+<div class="page-wrapper">
+      <div class="page-header">
+        <div>
+          <h1>Leaderboards</h1>
+          <p>Live rankings from the community · updates with every review and like</p>
+        </div>
+      </div>
+
+      <div class="lb-grid">
+        <!-- Highest rated games -->
+        <section class="lb-card">
+          <h2 class="lb-title">Highest rated</h2>
+          <p class="lb-subtitle">Min. <%= minReviews %> reviews · by community average</p>
+          <% if (!topRated || !topRated.length) { %>
+            <p class="lb-empty">Not enough reviews yet.</p>
+          <% } else { %>
+            <ol class="lb-list">
+              <% topRated.forEach(function(g, i) { %>
+                <li class="lb-row">
+                  <span class="lb-rank"><%= i + 1 %></span>
+                  <a href="/game/<%= g.game_id %>" class="lb-main">
+                    <% if (g.cover_url) { %>
+                      <img src="<%= g.cover_url %>" alt="" class="lb-thumb" />
+                    <% } else { %>
+                      <div class="lb-thumb lb-thumb-placeholder">?</div>
+                    <% } %>
+                    <div>
+                      <div class="lb-name"><%= g.title %></div>
+                      <div class="lb-meta"><%= g.review_count %> reviews</div>
+                    </div>
+                  </a>
+                  <span class="lb-score"><%= Number(g.avg_rating).toFixed(1) %></span>
+                </li>
+              <% }) %>
+            </ol>
+          <% } %>
+        </section>
+
+        <!-- Most reviewed games -->
+        <section class="lb-card">
+          <h2 class="lb-title">Most reviewed</h2>
+          <p class="lb-subtitle">Games with the most community reviews</p>
+          <% if (!mostReviewed || !mostReviewed.length) { %>
+            <p class="lb-empty">No reviews yet.</p>
+          <% } else { %>
+            <ol class="lb-list">
+              <% mostReviewed.forEach(function(g, i) { %>
+                <li class="lb-row">
+                  <span class="lb-rank"><%= i + 1 %></span>
+                  <a href="/game/<%= g.game_id %>" class="lb-main">
+                    <% if (g.cover_url) { %>
+                      <img src="<%= g.cover_url %>" alt="" class="lb-thumb" />
+                    <% } else { %>
+                      <div class="lb-thumb lb-thumb-placeholder">?</div>
+                    <% } %>
+                    <div>
+                      <div class="lb-name"><%= g.title %></div>
+                      <div class="lb-meta">avg <%= g.avg_rating !== null ? Number(g.avg_rating).toFixed(1) : "—" %></div>
+                    </div>
+                  </a>
+                  <span class="lb-score"><%= g.review_count %></span>
+                </li>
+              <% }) %>
+            </ol>
+          <% } %>
+        </section>
+
+        <!-- Top reviewers by count -->
+        <section class="lb-card">
+          <h2 class="lb-title">Most active reviewers</h2>
+          <p class="lb-subtitle">By number of reviews written</p>
+          <% if (!topReviewers || !topReviewers.length) { %>
+            <p class="lb-empty">No reviewers yet.</p>
+          <% } else { %>
+            <ol class="lb-list">
+              <% topReviewers.forEach(function(u, i) { %>
+                <li class="lb-row">
+                  <span class="lb-rank"><%= i + 1 %></span>
+                  <a href="/u/<%= u.username %>" class="lb-main">
+                    <% if (u.avatar_url) { %>
+                      <img src="<%= u.avatar_url %>" alt="" class="lb-avatar" />
+                    <% } else { %>
+                      <div class="lb-avatar lb-avatar-placeholder">
+                        <%= (u.display_name || u.username || "?").charAt(0).toUpperCase() %>
+                      </div>
+                    <% } %>
+                    <div>
+                      <div class="lb-name"><%= u.display_name || u.username %></div>
+                      <div class="lb-meta">@<%= u.username %></div>
+                    </div>
+                  </a>
+                  <span class="lb-score"><%= u.review_count %></span>
+                </li>
+              <% }) %>
+            </ol>
+          <% } %>
+        </section>
+
+        <!-- Most liked reviewers -->
+        <section class="lb-card">
+          <h2 class="lb-title">Most liked reviewers</h2>
+          <p class="lb-subtitle">Total likes received on their reviews</p>
+          <% if (!topLiked || !topLiked.length) { %>
+            <p class="lb-empty">No likes yet.</p>
+          <% } else { %>
+            <ol class="lb-list">
+              <% topLiked.forEach(function(u, i) { %>
+                <li class="lb-row">
+                  <span class="lb-rank"><%= i + 1 %></span>
+                  <a href="/u/<%= u.username %>" class="lb-main">
+                    <% if (u.avatar_url) { %>
+                      <img src="<%= u.avatar_url %>" alt="" class="lb-avatar" />
+                    <% } else { %>
+                      <div class="lb-avatar lb-avatar-placeholder">
+                        <%= (u.display_name || u.username || "?").charAt(0).toUpperCase() %>
+                      </div>
+                    <% } %>
+                    <div>
+                      <div class="lb-name"><%= u.display_name || u.username %></div>
+                      <div class="lb-meta">@<%= u.username %></div>
+                    </div>
+                  </a>
+                  <span class="lb-score"><%= u.likes_count %></span>
+                </li>
+              <% }) %>
+            </ol>
+          <% } %>
+        </section>
+
+        <!-- Completions this year -->
+        <section class="lb-card">
+          <h2 class="lb-title">Completions in <%= year %></h2>
+          <p class="lb-subtitle">Most games logged with a completion date this year</p>
+          <% if (!topThisYear || !topThisYear.length) { %>
+            <p class="lb-empty">No completions logged this year yet.</p>
+          <% } else { %>
+            <ol class="lb-list">
+              <% topThisYear.forEach(function(u, i) { %>
+                <li class="lb-row">
+                  <span class="lb-rank"><%= i + 1 %></span>
+                  <a href="/u/<%= u.username %>" class="lb-main">
+                    <% if (u.avatar_url) { %>
+                      <img src="<%= u.avatar_url %>" alt="" class="lb-avatar" />
+                    <% } else { %>
+                      <div class="lb-avatar lb-avatar-placeholder">
+                        <%= (u.display_name || u.username || "?").charAt(0).toUpperCase() %>
+                      </div>
+                    <% } %>
+                    <div>
+                      <div class="lb-name"><%= u.display_name || u.username %></div>
+                      <div class="lb-meta">@<%= u.username %></div>
+                    </div>
+                  </a>
+                  <span class="lb-score"><%= u.completed_count %></span>
+                </li>
+              <% }) %>
+            </ol>
+          <% } %>
+        </section>
+      </div>
+    </div>
+      <script src="/js/nav.js"></script>
+  </body>
+</html>

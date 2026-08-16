@@ -58,6 +58,31 @@ const db = process.env.DATABASE_URL
     });
 //#endregion
 
+// Ensure profile customization columns exist (safe to run every boot)
+async function ensureProfileColumns() {
+  const stmts = [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS accent_color VARCHAR(7) DEFAULT '#4f8cff'`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS pronouns VARCHAR(40)`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS location VARCHAR(80)`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_game VARCHAR(120)`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_game_id INTEGER`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_game_cover TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_style VARCHAR(20) DEFAULT 'default'`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT`,
+    `ALTER TABLE comments ADD COLUMN IF NOT EXISTS parent_id INTEGER`,
+  ];
+  for (const sql of stmts) {
+    try {
+      await db.query(sql);
+    } catch (e) {
+      console.warn("ensureProfileColumns:", e.message);
+    }
+  }
+}
+ensureProfileColumns().then(() => console.log("Profile columns checked.")).catch(() => {});
+
 //#region body parser and static public middlewares
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
@@ -81,13 +106,24 @@ const avatarUpload = multer({
 });
 
 const AVATAR_SIZE = 256; // square output
+const bannerDir = path.join(__dirname, "public", "uploads", "banners");
+fs.mkdirSync(bannerDir, { recursive: true });
+
+const bannerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /^image\/(jpeg|png|gif|webp)$/i.test(file.mimetype);
+    cb(ok ? null : new Error("Only JPEG, PNG, GIF, or WebP images are allowed"), ok);
+  },
+});
 
 async function processAndSaveAvatar(userId, fileBuffer) {
   const filename = `user-${userId}-${Date.now()}.webp`;
   const outPath = path.join(avatarDir, filename);
 
   await sharp(fileBuffer)
-    .rotate() // honor EXIF orientation
+    .rotate()
     .resize(AVATAR_SIZE, AVATAR_SIZE, {
       fit: "cover",
       position: "centre",
@@ -96,6 +132,27 @@ async function processAndSaveAvatar(userId, fileBuffer) {
     .toFile(outPath);
 
   return `/uploads/avatars/${filename}`;
+}
+
+async function processAndSaveBanner(userId, fileBuffer) {
+  const filename = `banner-${userId}-${Date.now()}.webp`;
+  const outPath = path.join(bannerDir, filename);
+
+  // Flatten animated/gif frames; fail clearly if sharp cannot decode
+  await sharp(fileBuffer, { failOn: "none" })
+    .rotate()
+    .resize(1500, 500, {
+      fit: "cover",
+      position: "centre",
+      withoutEnlargement: false,
+    })
+    .webp({ quality: 80 })
+    .toFile(outPath);
+
+  if (!fs.existsSync(outPath)) {
+    throw new Error("Banner file was not written to disk");
+  }
+  return `/uploads/banners/${filename}`;
 }
 //#endregion
 
@@ -165,6 +222,55 @@ let activeEdit = 0;
 let sortMethod = "released";
 //#endregion
 
+
+async function enrichAuthorTitles(rows, idField = "user_id") {
+  if (!rows || !rows.length) return rows;
+  const cache = new Map();
+
+  async function resolveUserId(row) {
+    const uid = Number(row[idField] ?? row.user_id);
+    if (!Number.isNaN(uid) && uid > 0) return uid;
+    if (row.author_username) {
+      try {
+        const r = await db.query(
+          `SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1`,
+          [row.author_username]
+        );
+        if (r.rows[0]) return Number(r.rows[0].id);
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  async function titleForUserId(userId) {
+    if (cache.has(userId)) return cache.get(userId);
+    try {
+      const info = await getXpInfo(userId);
+      const out = {
+        title: info.title || titleForLevel(info.level || 1),
+        xp: Number(info.totalXp) || 0,
+      };
+      cache.set(userId, out);
+      return out;
+    } catch (e) {
+      const out = { title: "Newcomer", xp: 0 };
+      cache.set(userId, out);
+      return out;
+    }
+  }
+
+  for (const row of rows) {
+    const userId = await resolveUserId(row);
+    if (!userId) continue;
+    const info = await titleForUserId(userId);
+    row.author_profile_title = info.title;
+    row.author_total_xp = info.xp;
+  }
+  return rows;
+}
+
+
+
 //#region Helper: load reviews + comments + covers
 async function loadReviews(whereClause, params, sortCol, currentUserId = null) {
   const allowedSorts = ["released", "rating", "title", "completed", "id"];
@@ -172,7 +278,9 @@ async function loadReviews(whereClause, params, sortCol, currentUserId = null) {
 
   const dbResult = await db.query(
     `SELECT games.*, users.email AS author_email,
-            users.username AS author_username, users.display_name AS author_display_name
+            users.username AS author_username, users.display_name AS author_display_name,
+            users.profile_title AS author_profile_title,
+            COALESCE(users.total_xp, 0)::int AS author_total_xp
      FROM games
      LEFT JOIN users ON games.user_id = users.id
      ${whereClause}
@@ -184,6 +292,7 @@ async function loadReviews(whereClause, params, sortCol, currentUserId = null) {
   let commentsByReview = {};
   let likeCountByReview = {};
   let likedByUser = new Set();
+  let reportedByUser = new Set();
 
   if (userInfo.length > 0) {
     const reviewIds = userInfo.map((g) => g.id);
@@ -191,7 +300,9 @@ async function loadReviews(whereClause, params, sortCol, currentUserId = null) {
     // Comments
     const commentsResult = await db.query(
       `SELECT comments.*, users.email AS author_email,
-              users.username AS author_username, users.display_name AS author_display_name
+              users.username AS author_username, users.display_name AS author_display_name,
+              users.profile_title AS author_profile_title,
+              COALESCE(users.total_xp, 0)::int AS author_total_xp
        FROM comments
        JOIN users ON comments.user_id = users.id
        WHERE comments.review_id = ANY($1)
@@ -224,25 +335,88 @@ async function loadReviews(whereClause, params, sortCol, currentUserId = null) {
       for (const row of userLikes.rows) {
         likedByUser.add(row.review_id);
       }
+
+      try {
+        const userReports = await db.query(
+          `SELECT target_id FROM reports
+           WHERE reporter_id = $1
+             AND target_type = 'review'
+             AND target_id = ANY($2)
+             AND (status IS NULL OR status = 'open' OR status = 'resolved')`,
+          [currentUserId, reviewIds]
+        );
+        for (const row of userReports.rows) {
+          reportedByUser.add(row.target_id);
+        }
+      } catch (e) {
+        /* reports table may lag */
+      }
     }
   }
 
-  return { userInfo, commentsByReview, likeCountByReview, likedByUser };
+  await enrichAuthorTitles(userInfo, "user_id");
+  for (const list of Object.values(commentsByReview)) {
+    await enrichAuthorTitles(list, "user_id");
+  }
+  for (const row of userInfo) {
+    if (row.author_profile_title && !row.author_title) {
+      row.author_title = row.author_profile_title;
+    }
+  }
+
+  return { userInfo, commentsByReview, likeCountByReview, likedByUser, reportedByUser };
 }
 //#endregion
 
 //#region get and display home feed + explore
+
+async function ensureStatusPositionColumn() {
+  try {
+    await db.query("ALTER TABLE game_statuses ADD COLUMN IF NOT EXISTS position INTEGER DEFAULT 0");
+  } catch (e) {
+    /* ignore */
+  }
+}
+ensureStatusPositionColumn();
+
 app.get("/", async (req, res) => {
+  let recentReviews = [];
+  try {
+    const recent = await db.query(
+      `SELECT game_id, title, cover_url, rating
+       FROM games
+       WHERE game_id IS NOT NULL AND cover_url IS NOT NULL
+       ORDER BY id DESC
+       LIMIT 12`
+    );
+    recentReviews = recent.rows;
+  } catch (e) {
+    try {
+      const recent = await db.query(
+        `SELECT game_id, title, cover_url, rating
+         FROM games
+         WHERE cover_url IS NOT NULL
+         ORDER BY id DESC
+         LIMIT 12`
+      );
+      recentReviews = recent.rows;
+    } catch (e2) {
+      recentReviews = [];
+    }
+  }
+  res.render("landing.ejs", {
+    userlog: req.user,
+    recentReviews,
+  });
+});
+
+app.get("/feed", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+
   const allowedSorts = ["released", "rating", "title", "completed"];
   if (!allowedSorts.includes(sortMethod)) sortMethod = "released";
 
-  let whereClause = "";
-  let params = [];
-  let feedMode = "explore"; // default for logged-out
-
-  if (req.isAuthenticated()) {
-    // Personalized feed: own reviews + people you follow (excluding blocks)
-    whereClause = `WHERE (
+  const whereClause = `WHERE (
                      games.user_id = $1
                      OR games.user_id IN (
                        SELECT following_id FROM follows WHERE follower_id = $1
@@ -254,25 +428,24 @@ app.get("/", async (req, res) => {
                    AND games.user_id NOT IN (
                      SELECT blocker_id FROM blocks WHERE blocked_id = $1
                    )`;
-    params = [req.user.id];
-    feedMode = "feed";
-  }
+  const params = [req.user.id];
 
   try {
-    const { userInfo, commentsByReview, likeCountByReview, likedByUser } = await loadReviews(
+    const { userInfo, commentsByReview, likeCountByReview, likedByUser, reportedByUser } = await loadReviews(
       whereClause,
       params,
       sortMethod,
-      req.user ? req.user.id : null
+      req.user.id
     );
 
     res.render("index.ejs", {
       userInfo,
       userlog: req.user,
       commentsByReview,
-      feedMode,
+      feedMode: "feed",
       likeCountByReview,
       likedByUser,
+      reportedByUser,
     });
   } catch (err) {
     console.error("Home feed error:", err);
@@ -286,7 +459,7 @@ app.get("/explore", async (req, res) => {
   if (!allowedSorts.includes(sortMethod)) sortMethod = "released";
 
   try {
-    const { userInfo, commentsByReview, likeCountByReview, likedByUser } = await loadReviews(
+    const { userInfo, commentsByReview, likeCountByReview, likedByUser, reportedByUser } = await loadReviews(
       "",
       [],
       sortMethod,
@@ -300,6 +473,7 @@ app.get("/explore", async (req, res) => {
       feedMode: "explore",
       likeCountByReview,
       likedByUser,
+      reportedByUser,
     });
   } catch (err) {
     console.error("Explore error:", err);
@@ -411,7 +585,7 @@ const ACHIEVEMENTS = {
   },
   reviews_25: {
     id: "reviews_25",
-    title: "Seasoned Critic",
+    title: "Seasoned",
     description: "Write 25 reviews",
     icon: "✍️",
   },
@@ -423,7 +597,7 @@ const ACHIEVEMENTS = {
   },
   first_follow: {
     id: "first_follow",
-    title: "Social Butterfly",
+    title: "Networked",
     description: "Follow another user",
     icon: "👋",
   },
@@ -433,15 +607,9 @@ const ACHIEVEMENTS = {
     description: "Gain your first follower",
     icon: "⭐",
   },
-  first_like_given: {
-    id: "first_like_given",
-    title: "Appreciator",
-    description: "Like a review",
-    icon: "💜",
-  },
   likes_received_10: {
     id: "likes_received_10",
-    title: "Crowd Favorite",
+    title: "Popular",
     description: "Receive 10 likes on your reviews",
     icon: "❤️",
   },
@@ -451,23 +619,11 @@ const ACHIEVEMENTS = {
     description: "Create your first list",
     icon: "📋",
   },
-  ranked_list: {
-    id: "ranked_list",
-    title: "Ranker",
-    description: "Create a ranked list",
-    icon: "🔢",
-  },
   first_status: {
     id: "first_status",
     title: "On the Shelf",
     description: "Set a Want / Playing / Played status",
     icon: "📚",
-  },
-  social_linked: {
-    id: "social_linked",
-    title: "Connected",
-    description: "Add a Twitch, YouTube, or X link",
-    icon: "🔗",
   },
   completions_10: {
     id: "completions_10",
@@ -551,14 +707,6 @@ async function checkAndUnlockAchievements(userId) {
       if (followers >= 1) await unlockAchievement(userId, "first_follower");
     } catch (e) {}
 
-    // Likes given
-    try {
-      const likesGiven = (
-        await db.query("SELECT COUNT(*)::int AS c FROM likes WHERE user_id = $1", [userId])
-      ).rows[0].c;
-      if (likesGiven >= 1) await unlockAchievement(userId, "first_like_given");
-    } catch (e) {}
-
     // Likes received
     try {
       const likesRecv = (
@@ -574,11 +722,10 @@ async function checkAndUnlockAchievements(userId) {
     // Lists
     try {
       const lists = await db.query(
-        "SELECT id, is_ranked FROM lists WHERE user_id = $1",
+        "SELECT id FROM lists WHERE user_id = $1",
         [userId]
       );
       if (lists.rows.length >= 1) await unlockAchievement(userId, "first_list");
-      if (lists.rows.some((l) => l.is_ranked)) await unlockAchievement(userId, "ranked_list");
     } catch (e) {}
 
     // Statuses
@@ -589,16 +736,6 @@ async function checkAndUnlockAchievements(userId) {
       if (statuses >= 1) await unlockAchievement(userId, "first_status");
     } catch (e) {}
 
-    // Social links
-    try {
-      const u = await db.query(
-        "SELECT twitch_username, youtube_url, x_username FROM users WHERE id = $1",
-        [userId]
-      );
-      if (u.rows[0] && (u.rows[0].twitch_username || u.rows[0].youtube_url || u.rows[0].x_username)) {
-        await unlockAchievement(userId, "social_linked");
-      }
-    } catch (e) {}
   } catch (err) {
     console.warn("Achievement check error:", err.message);
   }
@@ -961,7 +1098,7 @@ async function sendPushToUser(userId, payload) {
   const data = {
     title,
     body,
-    url: "/notifications",
+    url: "/explore",
   };
 
   let subs = [];
@@ -1125,16 +1262,13 @@ app.get("/api/games/search", async (req, res) => {
 
 //#region get and post for adding new game reviews
 app.get("/add", (req, res) => {
-  // Require login to add a review
-  if (!req.isAuthenticated()) {
-    return res.redirect("/login");
-  }
-  res.render("add.ejs");
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  return res.redirect("/feed?review=1");
 });
 
 app.get("/log", (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
-  res.render("log.ejs");
+  res.render("log.ejs", { userlog: req.user });
 });
 
 app.post("/log-game", async (req, res) => {
@@ -1149,10 +1283,10 @@ app.post("/log-game", async (req, res) => {
   const markPlayed = req.body.mark_played === "1" || req.body.mark_played === "on";
 
   if (!gameId || !title) {
-    return res.render("log.ejs", { error: "Please search for and select a game first." });
+    return res.render("log.ejs", { userlog: req.user, error: "Please search for and select a game first." });
   }
   if (rating === undefined || rating === null || rating === "") {
-    return res.render("log.ejs", { error: "Please choose a rating." });
+    return res.render("log.ejs", { userlog: req.user, error: "Please choose a rating." });
   }
 
   // Default completed to today if blank
@@ -1206,7 +1340,7 @@ app.post("/log-game", async (req, res) => {
     res.redirect("/");
   } catch (err) {
     console.error("Quick log error:", err.message);
-    res.render("log.ejs", { error: "Could not save log. Please try again." });
+    res.render("log.ejs", { userlog: req.user, error: "Could not save log. Please try again." });
   }
 });
 
@@ -1225,7 +1359,7 @@ app.post("/add-game", async (req, res) => {
   const hasSpoilers = req.body.has_spoilers === "1" || req.body.has_spoilers === "on";
 
   if (!gameId || !title) {
-    return res.render("add.ejs", { error: "Please search for and select a game first." });
+    return res.redirect("/feed?review=1&error=select");
   }
 
   try {
@@ -1244,29 +1378,52 @@ app.post("/add-game", async (req, res) => {
       entityId: null,
       meta: { game_id: gameId, title, rating, cover_url: coverUrl },
     });
-    res.redirect("/");
+    res.redirect("/feed");
   } catch (err) {
     console.error("Error adding game:", err.message);
-    res.render("add.ejs", { error: "Could not save review. Please try again." });
+    res.redirect("/feed?review=1&error=save");
   }
 });
 //#endregion
 
 //#region get and post for editing game reviews
 app.post("/edit", async (req, res) => {
-  let data = await db.query(
-    `SELECT * FROM games WHERE game_id=${req.body["edit"]}`
-  );
-  activeEdit = data.rows[0]["game_id"];
-  res.render("edit.ejs", { data: data.rows[0] });
+  // Legacy route — review editing is modal-based now
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  return res.redirect("back");
 });
 
 app.post("/edit-game", async (req, res) => {
-  await db.query(
-    `UPDATE games SET completed=$1, rating=$2, notes=$3 WHERE game_id=$4`,
-    [req.body["completed"], req.body["rating"], req.body["review"], activeEdit]
-  );
-  res.redirect("/");
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const reviewId = parseInt(req.body.review_id, 10);
+  const completed = req.body.completed;
+  const rating = req.body.rating;
+  const notes = req.body.review;
+  const hasSpoilers = req.body.has_spoilers === "1" || req.body.has_spoilers === "on";
+  if (!reviewId) return res.redirect("back");
+
+  try {
+    try {
+      await db.query(
+        `UPDATE games
+         SET completed = $1, rating = $2, notes = $3, has_spoilers = $4
+         WHERE id = $5 AND user_id = $6`,
+        [completed, rating, notes, hasSpoilers, reviewId, req.user.id]
+      );
+    } catch (e) {
+      await db.query(
+        `UPDATE games
+         SET completed = $1, rating = $2, notes = $3
+         WHERE id = $4 AND user_id = $5`,
+        [completed, rating, notes, reviewId, req.user.id]
+      );
+    }
+  } catch (err) {
+    console.error("Edit review error:", err.message);
+  }
+
+  const referer = req.get("Referer") || "/feed";
+  res.redirect(referer);
 });
 //#endregion
 
@@ -1280,9 +1437,22 @@ app.post("/delete", async (req, res) => {
 
 //#region post for sorting game reviews
 app.post("/sort", async (req, res) => {
-  console.log(req.body);
-  sortMethod = req.body["sort"];
-  res.redirect("/");
+  const allowed = ["released", "rating", "title", "completed"];
+  const next = (req.body.sort || "").toString();
+  if (allowed.includes(next)) sortMethod = next;
+
+  const referer = req.get("Referer") || "";
+  let dest = "/feed";
+  try {
+    const url = new URL(referer, `${req.protocol}://${req.get("host")}`);
+    if (url.pathname === "/explore") dest = "/explore";
+    else if (url.pathname === "/feed") dest = "/feed";
+  } catch (e) {
+    /* keep default */
+  }
+  // logged-out users don't have /feed
+  if (dest === "/feed" && !req.isAuthenticated()) dest = "/explore";
+  res.redirect(dest);
 });
 //#endregion
 
@@ -1302,21 +1472,30 @@ app.post("/comment", async (req, res) => {
   }
   try {
     let inserted;
+    const parent_id = req.body.parent_id ? parseInt(req.body.parent_id, 10) : null;
     try {
       inserted = await db.query(
-        `INSERT INTO comments (review_id, user_id, content, has_spoilers)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, review_id, user_id, content, created_at, has_spoilers`,
-        [review_id, req.user.id, content, hasSpoilers]
+        `INSERT INTO comments (review_id, user_id, content, has_spoilers, parent_id)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, review_id, user_id, content, created_at, has_spoilers, parent_id`,
+        [review_id, req.user.id, content, hasSpoilers, parent_id || null]
       );
     } catch (e) {
-      // column may not exist yet
-      inserted = await db.query(
-        `INSERT INTO comments (review_id, user_id, content)
-         VALUES ($1, $2, $3)
-         RETURNING id, review_id, user_id, content, created_at`,
-        [review_id, req.user.id, content]
-      );
+      try {
+        inserted = await db.query(
+          `INSERT INTO comments (review_id, user_id, content, has_spoilers)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, review_id, user_id, content, created_at, has_spoilers`,
+          [review_id, req.user.id, content, hasSpoilers]
+        );
+      } catch (e2) {
+        inserted = await db.query(
+          `INSERT INTO comments (review_id, user_id, content)
+           VALUES ($1, $2, $3)
+           RETURNING id, review_id, user_id, content, created_at`,
+          [review_id, req.user.id, content]
+        );
+      }
     }
     const comment = inserted.rows[0];
     if (comment.has_spoilers === undefined) comment.has_spoilers = hasSpoilers;
@@ -1333,6 +1512,19 @@ app.post("/comment", async (req, res) => {
           message: review.rows[0].title || null,
         });
       }
+      if (parent_id) {
+        const parent = await db.query("SELECT user_id FROM comments WHERE id = $1", [parent_id]);
+        if (parent.rows[0] && parent.rows[0].user_id !== req.user.id) {
+          await createNotification({
+            userId: parent.rows[0].user_id,
+            actorId: req.user.id,
+            type: "comment",
+            entityType: "comment",
+            entityId: parent_id,
+            message: "replied to your comment",
+          });
+        }
+      }
       await grantXp(req.user.id, "comment");
     } catch (e) {}
 
@@ -1348,6 +1540,7 @@ app.post("/comment", async (req, res) => {
           author_username: req.user.username || null,
           author_display_name: req.user.display_name || req.user.username || "You",
           has_spoilers: !!comment.has_spoilers,
+          parent_id: comment.parent_id || null,
         },
       });
     }
@@ -1366,22 +1559,42 @@ app.post("/edit-comment", async (req, res) => {
   }
   const comment_id = parseInt(req.body.comment_id, 10);
   const content = (req.body.content || "").trim();
+  const hasSpoilers = req.body.has_spoilers === "1" || req.body.has_spoilers === "on" || req.body.has_spoilers === true || req.body.has_spoilers === "true";
   if (!comment_id || !content) {
     if (json) return res.status(400).json({ error: "Invalid comment" });
     return res.redirect(req.get("Referer") || "/");
   }
   try {
-    const result = await db.query(
-      `UPDATE comments SET content = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2 AND user_id = $3
-       RETURNING id, content`,
-      [content, comment_id, req.user.id]
-    );
+    let result;
+    try {
+      result = await db.query(
+        `UPDATE comments SET content = $1, has_spoilers = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3 AND user_id = $4
+         RETURNING id, content, has_spoilers`,
+        [content, hasSpoilers, comment_id, req.user.id]
+      );
+    } catch (e) {
+      result = await db.query(
+        `UPDATE comments SET content = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2 AND user_id = $3
+         RETURNING id, content`,
+        [content, comment_id, req.user.id]
+      );
+    }
     if (!result.rows.length) {
       if (json) return res.status(403).json({ error: "Not allowed" });
       return res.redirect(req.get("Referer") || "/");
     }
-    if (json) return res.json({ ok: true, comment: result.rows[0] });
+    if (json) {
+      return res.json({
+        ok: true,
+        comment: {
+          id: result.rows[0].id,
+          content: result.rows[0].content,
+          has_spoilers: !!result.rows[0].has_spoilers,
+        },
+      });
+    }
   } catch (err) {
     console.error("Edit comment error:", err.message);
     if (json) return res.status(500).json({ error: "Could not edit comment" });
@@ -1603,7 +1816,7 @@ app.get("/u/:username", async (req, res) => {
   try {
     const username = req.params.username.toLowerCase();
     const userResult = await db.query(
-      "SELECT id, email, username, display_name, bio, avatar_url, twitch_username, youtube_url, x_username, created_at, total_xp, profile_title FROM users WHERE LOWER(username) = $1",
+      "SELECT id, email, username, display_name, bio, avatar_url, banner_url, accent_color, pronouns, location, favorite_game, favorite_game_id, favorite_game_cover, profile_style, twitch_username, youtube_url, x_username, created_at, total_xp, profile_title FROM users WHERE LOWER(username) = $1",
       [username]
     );
     if (userResult.rows.length === 0) {
@@ -1611,13 +1824,26 @@ app.get("/u/:username", async (req, res) => {
     }
     const profile = userResult.rows[0];
 
-    // Reviews by this user
+    // Total review count (for stats) + top 3 most liked for profile display
+    const totalReviewsRes = await db.query(
+      `SELECT COUNT(*)::int AS count FROM games WHERE user_id = $1`,
+      [profile.id]
+    );
+    const totalReviewCount = totalReviewsRes.rows[0].count;
+
     const reviewsResult = await db.query(
-      `SELECT games.*, users.email AS author_email, users.username AS author_username, users.display_name AS author_display_name
+      `SELECT games.*, users.email AS author_email, users.username AS author_username, users.display_name AS author_display_name,
+              users.profile_title AS author_profile_title,
+              COALESCE(users.total_xp, 0)::int AS author_total_xp,
+              COALESCE(lc.cnt, 0)::int AS like_count
        FROM games
        LEFT JOIN users ON games.user_id = users.id
+       LEFT JOIN (
+         SELECT review_id, COUNT(*)::int AS cnt FROM likes GROUP BY review_id
+       ) lc ON lc.review_id = games.id
        WHERE games.user_id = $1
-       ORDER BY games.released DESC NULLS LAST, games.id DESC`,
+       ORDER BY COALESCE(lc.cnt, 0) DESC, games.id DESC
+       LIMIT 3`,
       [profile.id]
     );
     const userInfo = reviewsResult.rows;
@@ -1627,7 +1853,9 @@ app.get("/u/:username", async (req, res) => {
     if (userInfo.length > 0) {
       const reviewIds = userInfo.map((g) => g.id);
       const commentsResult = await db.query(
-        `SELECT comments.*, users.email AS author_email, users.username AS author_username, users.display_name AS author_display_name
+        `SELECT comments.*, users.email AS author_email, users.username AS author_username, users.display_name AS author_display_name,
+                users.profile_title AS author_profile_title,
+                COALESCE(users.total_xp, 0)::int AS author_total_xp
          FROM comments
          JOIN users ON comments.user_id = users.id
          WHERE comments.review_id = ANY($1)
@@ -1643,6 +1871,7 @@ app.get("/u/:username", async (req, res) => {
     // Like counts + which the current user liked
     let likeCountByReview = {};
     let likedByUser = new Set();
+    let reportedByUser = new Set();
     if (userInfo.length > 0) {
       const reviewIds = userInfo.map((g) => g.id);
       const likesResult = await db.query(
@@ -1660,6 +1889,14 @@ app.get("/u/:username", async (req, res) => {
         for (const row of userLikes.rows) {
           likedByUser.add(row.review_id);
         }
+        try {
+          const userReports = await db.query(
+            `SELECT target_id FROM reports
+             WHERE reporter_id = $1 AND target_type = 'review' AND target_id = ANY($2)`,
+            [req.user.id, reviewIds]
+          );
+          for (const row of userReports.rows) reportedByUser.add(row.target_id);
+        } catch (e) {}
       }
     }
 
@@ -1748,10 +1985,10 @@ app.get("/u/:username", async (req, res) => {
     let statusShelves = { want: [], playing: [], played: [] };
     try {
       const statusRes = await db.query(
-        `SELECT game_id, status, title, cover_url, released, updated_at
+        `SELECT id, game_id, status, title, cover_url, released, updated_at, position
          FROM game_statuses
          WHERE user_id = $1
-         ORDER BY updated_at DESC`,
+         ORDER BY position ASC NULLS LAST, updated_at DESC`,
         [profile.id]
       );
       for (const row of statusRes.rows) {
@@ -1765,7 +2002,9 @@ app.get("/u/:username", async (req, res) => {
     let userLists = [];
     try {
       const listsRes = await db.query(
-        `SELECT l.*, COUNT(li.id)::int AS item_count
+        `SELECT l.*, COUNT(li.id)::int AS item_count,
+                (ARRAY_AGG(li.cover_url ORDER BY li.position ASC NULLS LAST, li.id ASC)
+                  FILTER (WHERE li.cover_url IS NOT NULL))[1:3] AS preview_covers
          FROM lists l
          LEFT JOIN list_items li ON li.list_id = l.id
          WHERE l.user_id = $1
@@ -1781,7 +2020,7 @@ app.get("/u/:username", async (req, res) => {
     // Profile stats
     const year = new Date().getFullYear();
     let profileStats = {
-      reviewCount: userInfo.length,
+      reviewCount: totalReviewCount,
       avgRating: null,
       completedThisYear: 0,
       wantCount: statusShelves.want.length,
@@ -1862,12 +2101,25 @@ app.get("/u/:username", async (req, res) => {
       };
     });
 
+    // Profile reviews are all by this user — use same title as profile header
+    const profileTitle = xpInfo?.title || profile.profile_title || titleForLevel(xpInfo?.level || 1);
+    const profileXp = Number(xpInfo?.totalXp) || Number(profile.total_xp) || 0;
+    for (const row of userInfo) {
+      row.author_title = profileTitle;
+      row.author_profile_title = profileTitle;
+      row.author_total_xp = profileXp;
+    }
+    for (const list of Object.values(commentsByReview)) {
+      await enrichAuthorTitles(list, "user_id");
+    }
+
     res.render("profile.ejs", {
       profile,
       userInfo,
       userlog: req.user,
       commentsByReview,
-      reviewCount: userInfo.length,
+      reviewCount: totalReviewCount,
+      totalReviewCount,
       followerCount: followerCountRes.rows[0].count,
       followingCount: followingCountRes.rows[0].count,
       isFollowing,
@@ -1877,6 +2129,7 @@ app.get("/u/:username", async (req, res) => {
       mutualFollowing,
       likeCountByReview,
       likedByUser,
+      reportedByUser,
       statusShelves,
       userLists,
       profileStats,
@@ -1890,6 +2143,135 @@ app.get("/u/:username", async (req, res) => {
     });
   } catch (err) {
     console.error("Profile error:", err);
+    res.status(500).send("Something went wrong");
+  }
+});
+
+
+app.get("/u/:username/reviews", async (req, res) => {
+  try {
+    const username = req.params.username.toLowerCase();
+    const userResult = await db.query(
+      `SELECT id, email, username, display_name, avatar_url FROM users WHERE LOWER(username) = $1`,
+      [username]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).send("User not found");
+    }
+    const profile = userResult.rows[0];
+
+    const sort = (req.query.sort || "likes").toString();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const perPage = 10;
+    const offset = (page - 1) * perPage;
+
+    let orderBy = "COALESCE(lc.cnt, 0) DESC, games.id DESC";
+    if (sort === "comments") {
+      orderBy = "COALESCE(cc.cnt, 0) DESC, games.id DESC";
+    } else if (sort === "recent") {
+      orderBy = "games.id DESC";
+    }
+
+    const countRes = await db.query(
+      `SELECT COUNT(*)::int AS count FROM games WHERE user_id = $1`,
+      [profile.id]
+    );
+    const total = countRes.rows[0].count;
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+
+    const reviewsResult = await db.query(
+      `SELECT games.*, users.email AS author_email, users.username AS author_username, users.display_name AS author_display_name,
+              COALESCE(lc.cnt, 0)::int AS like_count,
+              COALESCE(cc.cnt, 0)::int AS comment_count
+       FROM games
+       LEFT JOIN users ON games.user_id = users.id
+       LEFT JOIN (
+         SELECT review_id, COUNT(*)::int AS cnt FROM likes GROUP BY review_id
+       ) lc ON lc.review_id = games.id
+       LEFT JOIN (
+         SELECT review_id, COUNT(*)::int AS cnt FROM comments GROUP BY review_id
+       ) cc ON cc.review_id = games.id
+       WHERE games.user_id = $1
+       ORDER BY ${orderBy}
+       LIMIT $2 OFFSET $3`,
+      [profile.id, perPage, offset]
+    );
+    const userInfo = reviewsResult.rows;
+
+    let commentsByReview = {};
+    let likeCountByReview = {};
+    let likedByUser = new Set();
+    let reportedByUser = new Set();
+    if (userInfo.length > 0) {
+      const reviewIds = userInfo.map((g) => g.id);
+      const commentsResult = await db.query(
+        `SELECT comments.*, users.email AS author_email, users.username AS author_username, users.display_name AS author_display_name,
+                users.profile_title AS author_profile_title,
+                COALESCE(users.total_xp, 0)::int AS author_total_xp
+         FROM comments
+         JOIN users ON comments.user_id = users.id
+         WHERE comments.review_id = ANY($1)
+         ORDER BY comments.created_at ASC`,
+        [reviewIds]
+      );
+      for (const c of commentsResult.rows) {
+        if (!commentsByReview[c.review_id]) commentsByReview[c.review_id] = [];
+        commentsByReview[c.review_id].push(c);
+      }
+      const likesResult = await db.query(
+        `SELECT review_id, COUNT(*)::int AS count FROM likes WHERE review_id = ANY($1) GROUP BY review_id`,
+        [reviewIds]
+      );
+      for (const row of likesResult.rows) {
+        likeCountByReview[row.review_id] = row.count;
+      }
+      if (req.user) {
+        const userLikes = await db.query(
+          `SELECT review_id FROM likes WHERE user_id = $1 AND review_id = ANY($2)`,
+          [req.user.id, reviewIds]
+        );
+        for (const row of userLikes.rows) {
+          likedByUser.add(row.review_id);
+        }
+        try {
+          const userReports = await db.query(
+            `SELECT target_id FROM reports
+             WHERE reporter_id = $1 AND target_type = 'review' AND target_id = ANY($2)`,
+            [req.user.id, reviewIds]
+          );
+          for (const row of userReports.rows) reportedByUser.add(row.target_id);
+        } catch (e) {}
+      }
+    }
+
+    const profileXpInfo = await getXpInfo(profile.id);
+    const userReviewsTitle = profileXpInfo?.title || profile.profile_title || titleForLevel(profileXpInfo?.level || 1);
+    const userReviewsXp = Number(profileXpInfo?.totalXp) || 0;
+    for (const row of userInfo) {
+      row.author_title = userReviewsTitle;
+      row.author_profile_title = userReviewsTitle;
+      row.author_total_xp = userReviewsXp;
+    }
+    for (const list of Object.values(commentsByReview)) {
+      await enrichAuthorTitles(list, "user_id");
+    }
+
+    res.render("user-reviews.ejs", {
+      profile,
+      userInfo,
+      userlog: req.user,
+      commentsByReview,
+      likeCountByReview,
+      likedByUser,
+      reportedByUser,
+      sort,
+      page,
+      totalPages,
+      total,
+      perPage,
+    });
+  } catch (err) {
+    console.error("User reviews page error:", err);
     res.status(500).send("Something went wrong");
   }
 });
@@ -1981,18 +2363,246 @@ app.get("/u/:username/following", async (req, res) => {
 });
 
 //#region Game pages + site search
+
+app.get("/u/:username/mutual", async (req, res) => {
+  const username = (req.params.username || "").toLowerCase();
+  try {
+    const userResult = await db.query(
+      "SELECT id, username, display_name, avatar_url FROM users WHERE LOWER(username) = $1",
+      [username]
+    );
+    if (!userResult.rows.length) return res.status(404).send("User not found");
+    const profile = userResult.rows[0];
+
+    // Mutual tab is only meaningful on other people's profiles
+    if (req.user && req.user.id === profile.id) {
+      return res.redirect(`/u/${profile.username}/followers`);
+    }
+
+    let users = [];
+    if (req.user) {
+      // People both the viewer and this profile follow
+      const mutual = await db.query(
+        `SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio
+         FROM follows a
+         JOIN follows b ON a.following_id = b.following_id
+         JOIN users u ON u.id = a.following_id
+         WHERE a.follower_id = $1 AND b.follower_id = $2
+         ORDER BY u.display_name ASC NULLS LAST, u.username ASC`,
+        [req.user.id, profile.id]
+      );
+      users = mutual.rows;
+    }
+
+    // All mutual users are already followed by the viewer
+    if (req.user) {
+      users = users.map((u) => ({ ...u, is_followed_by_me: true }));
+    }
+
+    res.render("follow-list.ejs", {
+      profile,
+      users,
+      userlog: req.user,
+      listType: "mutual",
+      listTitle: "Mutual Following",
+    });
+  } catch (err) {
+    console.error("Mutual following page error:", err.message);
+    res.status(500).send("Something went wrong");
+  }
+});
+
+
+app.get("/game/:gameId/reviews", async (req, res) => {
+  const gameId = parseInt(req.params.gameId, 10);
+  if (!gameId) return res.status(404).send("Game not found");
+
+  try {
+    const sort = (req.query.sort || "likes").toString();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const perPage = 10;
+    const offset = (page - 1) * perPage;
+
+    let orderBy = "COALESCE(lc.cnt, 0) DESC, games.id DESC";
+    if (sort === "comments") {
+      orderBy = "COALESCE(cc.cnt, 0) DESC, games.id DESC";
+    } else if (sort === "recent") {
+      orderBy = "games.id DESC";
+    }
+
+    const statsResult = await db.query(
+      `SELECT COUNT(*)::int AS review_count,
+              AVG(CAST(rating AS DOUBLE PRECISION)) AS avg_rating,
+              MAX(title) AS title,
+              MAX(cover_url) AS cover_url
+       FROM games WHERE game_id = $1`,
+      [gameId]
+    );
+    const stats = statsResult.rows[0] || {};
+    const total = stats.review_count || 0;
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    let gameTitle = stats.title || `Game ${gameId}`;
+    let coverUrl = stats.cover_url || null;
+
+    if (!stats.title && process.env.IGDB_CLIENT_ID && process.env.IGDB_CLIENT_SECRET) {
+      try {
+        const { token, clientId } = await getIgdbToken();
+        const body = `where id = ${gameId}; fields name, cover.image_id;`;
+        const igdbRes = await axios.post("https://api.igdb.com/v4/games", body, {
+          headers: {
+            "Client-ID": clientId,
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "text/plain",
+          },
+        });
+        if (igdbRes.data && igdbRes.data[0]) {
+          const g = igdbRes.data[0];
+          gameTitle = g.name || gameTitle;
+          if (g.cover && g.cover.image_id) {
+            coverUrl = `https://images.igdb.com/igdb/image/upload/t_cover_big/${g.cover.image_id}.jpg`;
+          }
+        }
+      } catch (e) {}
+    }
+
+    const reviewsResult = await db.query(
+      `SELECT games.*, users.email AS author_email,
+              users.username AS author_username, users.display_name AS author_display_name,
+              users.profile_title AS author_profile_title,
+              COALESCE(users.total_xp, 0)::int AS author_total_xp,
+              COALESCE(lc.cnt, 0)::int AS like_count,
+              COALESCE(cc.cnt, 0)::int AS comment_count
+       FROM games
+       LEFT JOIN users ON games.user_id = users.id
+       LEFT JOIN (
+         SELECT review_id, COUNT(*)::int AS cnt FROM likes GROUP BY review_id
+       ) lc ON lc.review_id = games.id
+       LEFT JOIN (
+         SELECT review_id, COUNT(*)::int AS cnt FROM comments GROUP BY review_id
+       ) cc ON cc.review_id = games.id
+       WHERE games.game_id = $1
+       ORDER BY ${orderBy}
+       LIMIT $2 OFFSET $3`,
+      [gameId, perPage, offset]
+    );
+    const userInfo = reviewsResult.rows;
+
+    let commentsByReview = {};
+    let likeCountByReview = {};
+    let likedByUser = new Set();
+    let reportedByUser = new Set();
+    if (userInfo.length > 0) {
+      const reviewIds = userInfo.map((g) => g.id);
+      const commentsResult = await db.query(
+        `SELECT comments.*, users.email AS author_email, users.username AS author_username, users.display_name AS author_display_name,
+                users.profile_title AS author_profile_title,
+                COALESCE(users.total_xp, 0)::int AS author_total_xp
+         FROM comments
+         JOIN users ON comments.user_id = users.id
+         WHERE comments.review_id = ANY($1)
+         ORDER BY comments.created_at ASC`,
+        [reviewIds]
+      );
+      for (const c of commentsResult.rows) {
+        if (!commentsByReview[c.review_id]) commentsByReview[c.review_id] = [];
+        commentsByReview[c.review_id].push(c);
+      }
+      const likesResult = await db.query(
+        `SELECT review_id, COUNT(*)::int AS count FROM likes WHERE review_id = ANY($1) GROUP BY review_id`,
+        [reviewIds]
+      );
+      for (const row of likesResult.rows) {
+        likeCountByReview[row.review_id] = row.count;
+      }
+      if (req.user) {
+        const userLikes = await db.query(
+          `SELECT review_id FROM likes WHERE user_id = $1 AND review_id = ANY($2)`,
+          [req.user.id, reviewIds]
+        );
+        for (const row of userLikes.rows) {
+          likedByUser.add(row.review_id);
+        }
+        try {
+          const userReports = await db.query(
+            `SELECT target_id FROM reports
+             WHERE reporter_id = $1 AND target_type = 'review' AND target_id = ANY($2)`,
+            [req.user.id, reviewIds]
+          );
+          for (const row of userReports.rows) reportedByUser.add(row.target_id);
+        } catch (e) {}
+      }
+    }
+
+    for (const row of userInfo) {
+      try {
+        let userId = null;
+        // Prefer username match (author chip) over user_id in case of join quirks
+        if (row.author_username) {
+          const ur = await db.query(
+            `SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1`,
+            [row.author_username]
+          );
+          userId = ur.rows[0]?.id || null;
+        }
+        if (!userId) userId = row.user_id;
+        if (!userId) continue;
+        const info = await getXpInfo(userId);
+        const title = info.title || titleForLevel(info.level || 1);
+        row.author_title = title;
+        row.author_profile_title = title;
+        row.author_total_xp = Number(info.totalXp) || 0;
+      } catch (e) {
+        console.warn("game-reviews title resolve:", e.message);
+      }
+    }
+    for (const list of Object.values(commentsByReview)) {
+      await enrichAuthorTitles(list, "user_id");
+    }
+
+    res.render("game-reviews.ejs", {
+      gameId,
+      gameTitle,
+      coverUrl,
+      userInfo,
+      userlog: req.user,
+      commentsByReview,
+      likeCountByReview,
+      likedByUser,
+      reportedByUser,
+      sort,
+      page,
+      totalPages,
+      total,
+      perPage,
+      avgRating: stats.avg_rating,
+    });
+  } catch (err) {
+    console.error("Game reviews page error:", err);
+    res.status(500).send("Something went wrong");
+  }
+});
+
 app.get("/game/:gameId", async (req, res) => {
   const gameId = parseInt(req.params.gameId, 10);
   if (!gameId) return res.status(404).send("Game not found");
 
   try {
+    // Top reviews on game page (most liked), full list is on /game/:id/reviews
     const reviewsResult = await db.query(
       `SELECT games.*, users.email AS author_email,
-              users.username AS author_username, users.display_name AS author_display_name
+              users.username AS author_username, users.display_name AS author_display_name,
+              users.profile_title AS author_profile_title,
+              COALESCE(users.total_xp, 0)::int AS author_total_xp,
+              COALESCE(lc.cnt, 0)::int AS like_count
        FROM games
        LEFT JOIN users ON games.user_id = users.id
+       LEFT JOIN (
+         SELECT review_id, COUNT(*)::int AS cnt FROM likes GROUP BY review_id
+       ) lc ON lc.review_id = games.id
        WHERE games.game_id = $1
-       ORDER BY games.id DESC`,
+       ORDER BY COALESCE(lc.cnt, 0) DESC, games.id DESC
+       LIMIT 5`,
       [gameId]
     );
     const userInfo = reviewsResult.rows;
@@ -2068,11 +2678,14 @@ app.get("/game/:gameId", async (req, res) => {
     let commentsByReview = {};
     let likeCountByReview = {};
     let likedByUser = new Set();
+    let reportedByUser = new Set();
     if (userInfo.length > 0) {
       const reviewIds = userInfo.map((g) => g.id);
       const commentsResult = await db.query(
         `SELECT comments.*, users.email AS author_email,
-                users.username AS author_username, users.display_name AS author_display_name
+                users.username AS author_username, users.display_name AS author_display_name,
+                users.profile_title AS author_profile_title,
+                COALESCE(users.total_xp, 0)::int AS author_total_xp
          FROM comments
          JOIN users ON comments.user_id = users.id
          WHERE comments.review_id = ANY($1)
@@ -2099,6 +2712,14 @@ app.get("/game/:gameId", async (req, res) => {
         for (const row of userLikes.rows) {
           likedByUser.add(row.review_id);
         }
+        try {
+          const userReports = await db.query(
+            `SELECT target_id FROM reports
+             WHERE reporter_id = $1 AND target_type = 'review' AND target_id = ANY($2)`,
+            [req.user.id, reviewIds]
+          );
+          for (const row of userReports.rows) reportedByUser.add(row.target_id);
+        } catch (e) {}
       }
     }
 
@@ -2114,6 +2735,32 @@ app.get("/game/:gameId", async (req, res) => {
       } catch (e) {
         // table may not exist yet
       }
+    }
+
+    // Fans also liked: other games reviewed by people who reviewed this one
+    let fansAlsoLiked = [];
+    try {
+      const also = await db.query(
+        `SELECT g.game_id,
+                MAX(g.title) AS title,
+                MAX(g.cover_url) AS cover_url,
+                COUNT(*)::int AS shared_reviewers,
+                AVG(CAST(g.rating AS DOUBLE PRECISION)) AS avg_rating
+         FROM games g
+         WHERE g.user_id IN (
+           SELECT DISTINCT user_id FROM games WHERE game_id = $1 AND user_id IS NOT NULL
+         )
+         AND g.game_id IS NOT NULL
+         AND g.game_id <> $1
+         GROUP BY g.game_id
+         HAVING COUNT(*) >= 1
+         ORDER BY shared_reviewers DESC, avg_rating DESC NULLS LAST
+         LIMIT 7`,
+        [gameId]
+      );
+      fansAlsoLiked = also.rows;
+    } catch (e) {
+      console.warn("Fans also liked:", e.message);
     }
 
     // Top live Twitch stream for this game
@@ -2138,7 +2785,9 @@ app.get("/game/:gameId", async (req, res) => {
       commentsByReview,
       likeCountByReview,
       likedByUser,
+      reportedByUser,
       userStatus,
+      fansAlsoLiked,
       topStream,
       twitchParent: twitchEmbedParent(req),
     });
@@ -2147,6 +2796,96 @@ app.get("/game/:gameId", async (req, res) => {
     res.status(500).send("Something went wrong");
   }
 });
+
+
+app.get("/u/:username/shelf/:status", async (req, res) => {
+  try {
+    const username = req.params.username.toLowerCase();
+    const status = (req.params.status || "").toLowerCase();
+    const allowed = { want: "Want to Play", playing: "Playing", played: "Played" };
+    if (!allowed[status]) return res.status(404).send("Shelf not found");
+
+    const userResult = await db.query(
+      `SELECT id, username, display_name, avatar_url FROM users WHERE LOWER(username) = $1`,
+      [username]
+    );
+    if (!userResult.rows.length) return res.status(404).send("User not found");
+    const profile = userResult.rows[0];
+
+    const itemsRes = await db.query(
+      `SELECT id, game_id, status, title, cover_url, released, position, updated_at
+       FROM game_statuses
+       WHERE user_id = $1 AND status = $2
+       ORDER BY position ASC NULLS LAST, updated_at DESC, id ASC`,
+      [profile.id, status]
+    );
+
+    res.render("shelf.ejs", {
+      profile,
+      status,
+      statusLabel: allowed[status],
+      items: itemsRes.rows,
+      userlog: req.user,
+    });
+  } catch (err) {
+    console.error("Shelf page error:", err);
+    res.status(500).send("Something went wrong");
+  }
+});
+
+app.post("/u/:username/shelf/:status/reorder", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ error: "Login required" });
+  const username = req.params.username.toLowerCase();
+  const status = (req.params.status || "").toLowerCase();
+  const allowed = ["want", "playing", "played"];
+  if (!allowed.includes(status)) return res.status(404).json({ error: "Not found" });
+
+  if ((req.user.username || "").toLowerCase() !== username) {
+    return res.status(403).json({ error: "Not allowed" });
+  }
+
+  const order = req.body && Array.isArray(req.body.order) ? req.body.order : null;
+  if (!order || !order.length) return res.status(400).json({ error: "Invalid order" });
+
+  try {
+    const existing = await db.query(
+      `SELECT id FROM game_statuses WHERE user_id = $1 AND status = $2`,
+      [req.user.id, status]
+    );
+    const valid = new Set(existing.rows.map((r) => r.id));
+    const ids = order.map((id) => parseInt(id, 10)).filter((id) => valid.has(id));
+    for (let i = 0; i < ids.length; i++) {
+      await db.query(
+        `UPDATE game_statuses SET position = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND user_id = $3`,
+        [i + 1, ids[i], req.user.id]
+      );
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Shelf reorder error:", err.message);
+    res.status(500).json({ error: "Could not reorder" });
+  }
+});
+
+app.post("/u/:username/shelf/:status/items/:itemId/delete", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const username = req.params.username.toLowerCase();
+  const status = (req.params.status || "").toLowerCase();
+  const itemId = parseInt(req.params.itemId, 10);
+  if ((req.user.username || "").toLowerCase() !== username) {
+    return res.status(403).send("Not allowed");
+  }
+  try {
+    await db.query(
+      `DELETE FROM game_statuses WHERE id = $1 AND user_id = $2 AND status = $3`,
+      [itemId, req.user.id, status]
+    );
+  } catch (err) {
+    console.error("Shelf remove error:", err.message);
+  }
+  res.redirect(`/u/${username}/shelf/${status}`);
+});
+
 
 app.post("/game/:gameId/status", async (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
@@ -2168,16 +2907,26 @@ app.post("/game/:gameId/status", async (req, res) => {
       const coverUrl = (req.body.cover_url || "").trim() || null;
       const released = req.body.released || null;
 
+      const posRes = await db.query(
+        `SELECT COALESCE(MAX(position), 0) + 1 AS next
+         FROM game_statuses WHERE user_id = $1 AND status = $2`,
+        [req.user.id, status]
+      );
+      const nextPos = posRes.rows[0].next;
       await db.query(
-        `INSERT INTO game_statuses (user_id, game_id, status, title, cover_url, released, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+        `INSERT INTO game_statuses (user_id, game_id, status, title, cover_url, released, position, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
          ON CONFLICT (user_id, game_id)
          DO UPDATE SET status = EXCLUDED.status,
                        title = COALESCE(EXCLUDED.title, game_statuses.title),
                        cover_url = COALESCE(EXCLUDED.cover_url, game_statuses.cover_url),
                        released = COALESCE(EXCLUDED.released, game_statuses.released),
+                       position = CASE
+                         WHEN game_statuses.status IS DISTINCT FROM EXCLUDED.status THEN EXCLUDED.position
+                         ELSE game_statuses.position
+                       END,
                        updated_at = CURRENT_TIMESTAMP`,
-        [req.user.id, gameId, status, title, coverUrl, released]
+        [req.user.id, gameId, status, title, coverUrl, released, nextPos]
       );
       await checkAndUnlockAchievements(req.user.id);
       await grantXp(req.user.id, "status");
@@ -2210,7 +2959,9 @@ app.get("/review/:id", async (req, res) => {
     // Comments
     const commentsResult = await db.query(
       `SELECT comments.*, users.email AS author_email,
-              users.username AS author_username, users.display_name AS author_display_name
+              users.username AS author_username, users.display_name AS author_display_name,
+              users.profile_title AS author_profile_title,
+              COALESCE(users.total_xp, 0)::int AS author_total_xp
        FROM comments
        JOIN users ON comments.user_id = users.id
        WHERE comments.review_id = $1
@@ -2222,6 +2973,7 @@ app.get("/review/:id", async (req, res) => {
     // Likes
     let likeCountByReview = {};
     let likedByUser = new Set();
+    let reportedByUser = new Set();
     const likesResult = await db.query(
       `SELECT COUNT(*)::int AS count FROM likes WHERE review_id = $1`,
       [reviewId]
@@ -2243,6 +2995,7 @@ app.get("/review/:id", async (req, res) => {
       commentsByReview,
       likeCountByReview,
       likedByUser,
+      reportedByUser,
       shareUrl,
       review: userInfo[0],
     });
@@ -2253,55 +3006,8 @@ app.get("/review/:id", async (req, res) => {
 });
 
 app.get("/search", async (req, res) => {
-  try {
-    let localGames = [];
-    try {
-      const localResult = await db.query(
-        `SELECT game_id,
-                MAX(title) AS title,
-                MAX(cover_url) AS cover_url,
-                COUNT(*)::int AS review_count,
-                AVG(CAST(rating AS DOUBLE PRECISION)) AS avg_rating
-         FROM games
-         GROUP BY game_id
-         ORDER BY review_count DESC, avg_rating DESC NULLS LAST
-         LIMIT 20`
-      );
-      localGames = localResult.rows;
-    } catch (innerErr) {
-      console.warn("Search local games query issue:", innerErr.message);
-      try {
-        const localResult = await db.query(
-          `SELECT game_id,
-                  MAX(title) AS title,
-                  COUNT(*)::int AS review_count,
-                  AVG(CAST(rating AS DOUBLE PRECISION)) AS avg_rating
-           FROM games
-           GROUP BY game_id
-           ORDER BY review_count DESC, avg_rating DESC NULLS LAST
-           LIMIT 20`
-        );
-        localGames = localResult.rows.map((r) => ({ ...r, cover_url: null }));
-      } catch (innerErr2) {
-        console.warn("Search local games unavailable:", innerErr2.message);
-        localGames = [];
-      }
-    }
-
-    res.render("search.ejs", {
-      userlog: req.user,
-      localGames,
-      query: req.query.q || "",
-    });
-  } catch (err) {
-    console.error("Search page error:", err);
-    // Still show the search UI even if local list fails
-    res.render("search.ejs", {
-      userlog: req.user,
-      localGames: [],
-      query: req.query.q || "",
-    });
-  }
+  // Search UI lives in the navbar now
+  return res.redirect("/");
 });
 //#endregion
 
@@ -2309,13 +3015,14 @@ app.get("/search", async (req, res) => {
 app.get("/leaderboards", async (req, res) => {
   const minReviews = 1; // raise to 3 when the community is bigger
   const year = new Date().getFullYear();
-  const limit = 10;
+  const limit = 50;
 
   let topRated = [];
   let mostReviewed = [];
   let topReviewers = [];
   let topLiked = [];
   let topThisYear = [];
+  let topXp = [];
 
   try {
     // Highest rated games (community avg)
@@ -2449,6 +3156,22 @@ app.get("/leaderboards", async (req, res) => {
         topThisYear = [];
       }
     }
+
+    // Highest XP
+    try {
+      const xp = await db.query(
+        `SELECT id, username, display_name, avatar_url,
+                COALESCE(total_xp, 0)::int AS total_xp
+         FROM users
+         WHERE username IS NOT NULL
+         ORDER BY COALESCE(total_xp, 0) DESC, id ASC
+         LIMIT $1`,
+        [limit]
+      );
+      topXp = xp.rows;
+    } catch (e) {
+      topXp = [];
+    }
   } catch (err) {
     console.error("Leaderboards error:", err);
   }
@@ -2460,14 +3183,19 @@ app.get("/leaderboards", async (req, res) => {
     topReviewers,
     topLiked,
     topThisYear,
+    topXp,
     minReviews,
     year,
   });
 });
 //#endregion
 
-//#region Diary
-app.get("/u/:username/diary", async (req, res) => {
+//#region Journal
+app.get("/u/:username/diary", (req, res) => {
+  res.redirect(301, `/u/${req.params.username}/journal`);
+});
+
+app.get("/u/:username/journal", async (req, res) => {
   try {
     const username = req.params.username.toLowerCase();
     const userResult = await db.query(
@@ -2510,7 +3238,7 @@ app.get("/u/:username/diary", async (req, res) => {
       userlog: req.user,
     });
   } catch (err) {
-    console.error("Diary error:", err);
+    console.error("Journal error:", err);
     res.status(500).send("Something went wrong");
   }
 });
@@ -2526,7 +3254,7 @@ app.post("/lists", async (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
   const title = (req.body.title || "").trim();
   const description = (req.body.description || "").trim().slice(0, 500);
-  const isRanked = req.body.is_ranked === "1" || req.body.is_ranked === "on";
+  const isRanked = false;
 
   if (!title || title.length < 1) {
     return res.render("new-list.ejs", { userlog: req.user, error: "Title is required." });
@@ -2562,9 +3290,7 @@ app.get("/lists/:id", async (req, res) => {
     );
     const owner = ownerRes.rows[0];
 
-    const order = list.is_ranked
-      ? "ORDER BY position ASC, added_at ASC"
-      : "ORDER BY added_at DESC";
+    const order = "ORDER BY position ASC NULLS LAST, added_at ASC, id ASC";
     const itemsRes = await db.query(
       `SELECT * FROM list_items WHERE list_id = $1 ${order}`,
       [listId]
@@ -2597,9 +3323,9 @@ app.post("/lists/:id/items", async (req, res) => {
       return res.status(403).send("Not allowed");
     }
 
-    // Next position for ranked lists
+    // Next position for ordering (all lists)
     let position = 0;
-    if (listRes.rows[0].is_ranked) {
+    {
       const posRes = await db.query(
         "SELECT COALESCE(MAX(position), 0) + 1 AS next FROM list_items WHERE list_id = $1",
         [listId]
@@ -2649,10 +3375,6 @@ app.post("/lists/:id/items/:itemId/move", async (req, res) => {
     if (!listRes.rows.length || listRes.rows[0].user_id !== req.user.id) {
       return res.status(403).send("Not allowed");
     }
-    if (!listRes.rows[0].is_ranked) {
-      return res.redirect(`/lists/${listId}`);
-    }
-
     const itemsRes = await db.query(
       "SELECT id FROM list_items WHERE list_id = $1 ORDER BY position ASC, added_at ASC, id ASC",
       [listId]
@@ -2680,6 +3402,71 @@ app.post("/lists/:id/items/:itemId/move", async (req, res) => {
     console.error("Move list item error:", err.message);
   }
   res.redirect(`/lists/${listId}`);
+});
+
+
+
+app.post("/lists/:id/toggle-numbered", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const listId = parseInt(req.params.id, 10);
+  if (!listId) return res.redirect("/lists");
+
+  try {
+    const listRes = await db.query("SELECT * FROM lists WHERE id = $1", [listId]);
+    if (!listRes.rows.length || listRes.rows[0].user_id !== req.user.id) {
+      return res.status(403).send("Not allowed");
+    }
+    const next = !listRes.rows[0].is_ranked;
+    await db.query(
+      "UPDATE lists SET is_ranked = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+      [next, listId]
+    );
+  } catch (err) {
+    console.error("Toggle numbered list error:", err.message);
+  }
+  res.redirect(`/lists/${listId}`);
+});
+
+app.post("/lists/:id/reorder", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: "Login required" });
+  }
+  const listId = parseInt(req.params.id, 10);
+  const order = req.body && Array.isArray(req.body.order) ? req.body.order : null;
+  if (!listId || !order || !order.length) {
+    return res.status(400).json({ error: "Invalid order" });
+  }
+
+  try {
+    const listRes = await db.query("SELECT * FROM lists WHERE id = $1", [listId]);
+    if (!listRes.rows.length || listRes.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+
+    // Validate all IDs belong to this list
+    const itemsRes = await db.query(
+      "SELECT id FROM list_items WHERE list_id = $1",
+      [listId]
+    );
+    const valid = new Set(itemsRes.rows.map((r) => r.id));
+    const ids = order.map((id) => parseInt(id, 10)).filter((id) => valid.has(id));
+    if (!ids.length) {
+      return res.status(400).json({ error: "No valid items" });
+    }
+
+    for (let i = 0; i < ids.length; i++) {
+      await db.query("UPDATE list_items SET position = $1 WHERE id = $2 AND list_id = $3", [
+        i + 1,
+        ids[i],
+        listId,
+      ]);
+    }
+    await db.query("UPDATE lists SET updated_at = CURRENT_TIMESTAMP WHERE id = $1", [listId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Reorder list error:", err.message);
+    res.status(500).json({ error: "Could not reorder" });
+  }
 });
 
 app.post("/lists/:id/items/:itemId/delete", async (req, res) => {
@@ -2766,8 +3553,13 @@ app.post("/api/push/unsubscribe", async (req, res) => {
 //#endregion
 
 //#region Notification routes
-app.get("/notifications", async (req, res) => {
+app.get("/notifications", (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
+  return res.redirect("/explore");
+});
+
+app.get("/api/notifications", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ ok: false, error: "Login required" });
   try {
     const result = await db.query(
       `SELECT n.*,
@@ -2781,21 +3573,58 @@ app.get("/notifications", async (req, res) => {
        LIMIT 50`,
       [req.user.id]
     );
+    const unread = (
+      await db.query(
+        "SELECT COUNT(*)::int AS c FROM notifications WHERE user_id = $1 AND read = FALSE",
+        [req.user.id]
+      )
+    ).rows[0].c;
+    res.json({ ok: true, notifications: result.rows, unread });
+  } catch (err) {
+    console.error("Notifications API error:", err);
+    res.status(500).json({ ok: false, error: "Failed to load notifications" });
+  }
+});
 
-    // Mark all as read when opening the page
+app.post("/api/notifications/:id/read", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ ok: false });
+  try {
+    await db.query(
+      "UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2",
+      [req.params.id, req.user.id]
+    );
+    const unread = (
+      await db.query(
+        "SELECT COUNT(*)::int AS c FROM notifications WHERE user_id = $1 AND read = FALSE",
+        [req.user.id]
+      )
+    ).rows[0].c;
+    res.json({ ok: true, unread });
+  } catch (err) {
+    res.status(500).json({ ok: false });
+  }
+});
+
+app.post("/api/notifications/read-all", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ ok: false });
+  try {
     await db.query(
       "UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE",
       [req.user.id]
     );
-    res.locals.unreadNotifications = 0;
-
-    res.render("notifications.ejs", {
-      userlog: req.user,
-      notifications: result.rows,
-    });
+    res.json({ ok: true, unread: 0 });
   } catch (err) {
-    console.error("Notifications error:", err);
-    res.status(500).send("Something went wrong");
+    res.status(500).json({ ok: false });
+  }
+});
+
+app.post("/api/notifications/clear-all", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ ok: false });
+  try {
+    await db.query("DELETE FROM notifications WHERE user_id = $1", [req.user.id]);
+    res.json({ ok: true, unread: 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false });
   }
 });
 
@@ -2806,16 +3635,154 @@ app.post("/notifications/read", async (req, res) => {
       "UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE",
       [req.user.id]
     );
-  } catch (err) {
-    console.error("Mark read error:", err.message);
-  }
-  res.redirect("/notifications");
+  } catch (err) {}
+  res.redirect("/explore");
 });
 //#endregion
 
+
+
+app.post("/account/password", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+
+  const currentPassword = req.body.current_password || "";
+  const newPassword = req.body.new_password || "";
+  const confirmPassword = req.body.confirm_password || "";
+
+  const renderErr = (msg) =>
+    res.render("edit-profile.ejs", { user: req.user, passwordError: msg });
+
+  try {
+    const userRes = await db.query("SELECT * FROM users WHERE id = $1", [req.user.id]);
+    if (!userRes.rows.length) return res.redirect("/login");
+    const user = userRes.rows[0];
+
+    if (!user.password || !String(user.password).startsWith("$2")) {
+      return renderErr("Password change is only available for email/password accounts.");
+    }
+    if (!newPassword || newPassword.length < 6) {
+      return renderErr("New password must be at least 6 characters.");
+    }
+    if (newPassword !== confirmPassword) {
+      return renderErr("New passwords do not match.");
+    }
+
+    const match = await bcrypt.compare(currentPassword, user.password);
+    if (!match) return renderErr("Current password is incorrect.");
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.query("UPDATE users SET password = $1 WHERE id = $2", [hash, req.user.id]);
+
+    // Refresh session user object lightly
+    req.user.password = hash;
+
+    res.render("edit-profile.ejs", {
+      user: { ...req.user, password: hash },
+      passwordSuccess: "Password updated successfully.",
+    });
+  } catch (err) {
+    console.error("Change password error:", err);
+    return renderErr("Could not update password. Please try again.");
+  }
+});
+
+app.post("/account/delete", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+
+  const userId = req.user.id;
+  const confirmUsername = (req.body.confirm_username || "").trim().replace(/^@/, "").toLowerCase();
+  const password = req.body.password || "";
+
+  try {
+    const userRes = await db.query("SELECT * FROM users WHERE id = $1", [userId]);
+    if (!userRes.rows.length) return res.redirect("/login");
+    const user = userRes.rows[0];
+
+    const actualUsername = (user.username || "").toLowerCase();
+    if (!actualUsername || confirmUsername !== actualUsername) {
+      return res.render("edit-profile.ejs", {
+        user: req.user,
+        deleteError: "Username did not match. Account not deleted.",
+      });
+    }
+
+    // Require password only for local bcrypt accounts (not OAuth placeholders)
+    const isLocalPassword = user.password && String(user.password).startsWith("$2");
+    if (isLocalPassword) {
+      const match = await bcrypt.compare(password, user.password);
+      if (!match) {
+        return res.render("edit-profile.ejs", {
+          user: req.user,
+          deleteError: "Incorrect password. Account not deleted.",
+        });
+      }
+    }
+
+    // Best-effort cleanup for tables that may lack ON DELETE CASCADE
+    const cleanup = [
+      "DELETE FROM messages WHERE sender_id = $1 OR conversation_id IN (SELECT id FROM conversations WHERE user_a_id = $1 OR user_b_id = $1)",
+      "DELETE FROM conversations WHERE user_a_id = $1 OR user_b_id = $1",
+      "DELETE FROM push_subscriptions WHERE user_id = $1",
+      "DELETE FROM activities WHERE actor_id = $1",
+      "DELETE FROM notifications WHERE user_id = $1 OR actor_id = $1",
+      "DELETE FROM likes WHERE user_id = $1 OR review_id IN (SELECT id FROM games WHERE user_id = $1)",
+      "DELETE FROM comments WHERE user_id = $1 OR review_id IN (SELECT id FROM games WHERE user_id = $1)",
+      "DELETE FROM list_items WHERE list_id IN (SELECT id FROM lists WHERE user_id = $1)",
+      "DELETE FROM lists WHERE user_id = $1",
+      "DELETE FROM game_statuses WHERE user_id = $1",
+      "DELETE FROM games WHERE user_id = $1",
+      "DELETE FROM follows WHERE follower_id = $1 OR following_id = $1",
+      "DELETE FROM blocks WHERE blocker_id = $1 OR blocked_id = $1",
+      "DELETE FROM user_achievements WHERE user_id = $1",
+      "DELETE FROM xp_events WHERE user_id = $1",
+      "DELETE FROM xp_daily WHERE user_id = $1",
+    ];
+    for (const sql of cleanup) {
+      try {
+        await db.query(sql, [userId]);
+      } catch (e) {
+        // ignore missing tables / schema differences
+      }
+    }
+
+    await db.query("DELETE FROM users WHERE id = $1", [userId]);
+
+    req.logout(() => {
+      req.session.destroy(() => {
+        res.clearCookie("connect.sid");
+        res.redirect("/?deleted=1");
+      });
+    });
+  } catch (err) {
+    console.error("Delete account error:", err);
+    res.render("edit-profile.ejs", {
+      user: req.user,
+      deleteError: "Could not delete account. Please try again.",
+    });
+  }
+});
+
+app.get("/settings", (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  return res.redirect("/profile/edit");
+});
+
 app.get("/profile/edit", (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
-  res.render("edit-profile.ejs", { user: req.user });
+  const ok = String(req.query.ok || "");
+  const error = req.query.error ? String(req.query.error) : null;
+  const successMap = {
+    banner: "Banner updated.",
+    "banner-removed": "Banner removed.",
+    "photo-removed": "Profile photo removed.",
+    photo: "Profile photo updated.",
+  };
+  res.render("edit-profile.ejs", {
+    user: req.user,
+    userlog: req.user,
+    success: successMap[ok] || null,
+    error,
+  });
 });
 
 app.post("/profile/avatar", (req, res) => {
@@ -2879,13 +3846,106 @@ app.post("/profile/avatar", (req, res) => {
 });
 
 
+app.post("/profile/banner", (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+
+  // Make sure column exists before write
+  const run = async () => {
+    try {
+      await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT`);
+    } catch (e) {}
+
+    bannerUpload.single("banner")(req, res, async (err) => {
+      if (err) {
+        console.error("Banner multer error:", err);
+        const msg = err.code === "LIMIT_FILE_SIZE"
+          ? "Banner must be under 8 MB."
+          : (err.message || "Upload failed.");
+        return res.redirect("/profile/edit?error=" + encodeURIComponent(msg) + "#photos");
+      }
+      if (!req.file || !req.file.buffer) {
+        return res.redirect("/profile/edit?error=" + encodeURIComponent("Please choose a banner image file.") + "#photos");
+      }
+
+      try {
+        fs.mkdirSync(bannerDir, { recursive: true });
+        const bannerUrl = await processAndSaveBanner(req.user.id, req.file.buffer);
+        console.log("Banner saved:", bannerUrl, "bytes in:", req.file.buffer.length);
+
+        if (req.user.banner_url && String(req.user.banner_url).startsWith("/uploads/banners/")) {
+          const oldPath = path.join(__dirname, "public", req.user.banner_url);
+          fs.promises.unlink(oldPath).catch(() => {});
+        }
+
+        const result = await db.query(
+          `UPDATE users SET banner_url = $1 WHERE id = $2 RETURNING *`,
+          [bannerUrl, req.user.id]
+        );
+        if (!result.rows.length) {
+          return res.redirect("/profile/edit?error=" + encodeURIComponent("Could not update banner.") + "#photos");
+        }
+
+        req.login(result.rows[0], (loginErr) => {
+          if (loginErr) console.error(loginErr);
+          res.redirect("/profile/edit?ok=banner#photos");
+        });
+      } catch (e) {
+        console.error("Banner upload error:", e);
+        res.redirect("/profile/edit?error=" + encodeURIComponent("Could not process banner.") + "#photos");
+      }
+    });
+  };
+
+  run();
+});
+
+app.post("/profile/avatar/remove", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  try {
+    if (req.user.avatar_url && String(req.user.avatar_url).startsWith("/uploads/avatars/")) {
+      const oldPath = path.join(__dirname, "public", req.user.avatar_url);
+      fs.promises.unlink(oldPath).catch(() => {});
+    }
+    const result = await db.query(
+      `UPDATE users SET avatar_url = NULL WHERE id = $1 RETURNING *`,
+      [req.user.id]
+    );
+    req.login(result.rows[0], (err) => {
+      if (err) console.error(err);
+      res.redirect("/profile/edit?ok=photo-removed#photos");
+    });
+  } catch (e) {
+    res.redirect("/profile/edit");
+  }
+});
+
+app.post("/profile/banner/remove", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  try {
+    if (req.user.banner_url && req.user.banner_url.startsWith("/uploads/banners/")) {
+      const oldPath = path.join(__dirname, "public", req.user.banner_url);
+      fs.promises.unlink(oldPath).catch(() => {});
+    }
+    const result = await db.query(
+      `UPDATE users SET banner_url = NULL WHERE id = $1 RETURNING *`,
+      [req.user.id]
+    );
+    req.login(result.rows[0], (err) => {
+      if (err) console.error(err);
+      res.redirect("/profile/edit?ok=banner-removed#photos");
+    });
+  } catch (e) {
+    res.redirect("/profile/edit#photos");
+  }
+});
+
 app.post("/profile/edit", async (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
 
   const handle = (req.body.username || "").trim().toLowerCase();
   const displayName = (req.body.display_name || "").trim();
   const bio = (req.body.bio || "").trim().slice(0, 300);
-  const avatarUrl = (req.body.avatar_url || "").trim() || null;
+  const avatarUrl = req.user.avatar_url || null; // photo upload only — not from form URL
   let twitchUsername = (req.body.twitch_username || "").trim().toLowerCase() || null;
   if (twitchUsername) {
     twitchUsername = twitchUsername.replace(/^https?:\/\/(www\.)?twitch\.tv\//, "").split("/")[0].split("?")[0];
@@ -2927,14 +3987,42 @@ app.post("/profile/edit", async (req, res) => {
       });
     }
 
-    const result = await db.query(
-      `UPDATE users
-       SET username = $1, display_name = $2, bio = $3, avatar_url = $4,
-           twitch_username = $5, youtube_url = $6, x_username = $7
-       WHERE id = $8
-       RETURNING *`,
-      [handle, displayName || handle, bio, avatarUrl, twitchUsername, youtubeUrl, xUsername, req.user.id]
-    );
+    const pronouns = (req.body.pronouns || "").trim().slice(0, 40) || null;
+    const location = (req.body.location || "").trim().slice(0, 80) || null;
+    const favoriteGame = (req.body.favorite_game || "").trim().slice(0, 120) || null;
+    const favoriteGameId = parseInt(req.body.favorite_game_id, 10) || null;
+    const favoriteGameCover = (req.body.favorite_game_cover || "").trim() || null;
+    let accentColor = req.user.accent_color || "#4f8cff";
+    if (!/^#[0-9a-fA-F]{6}$/.test(accentColor)) accentColor = "#4f8cff";
+    const allowedStyles = ["default", "compact", "vivid"];
+    const profileStyle = req.user.profile_style || "default";
+
+    let result;
+    try {
+      result = await db.query(
+        `UPDATE users
+         SET username = $1, display_name = $2, bio = $3, avatar_url = $4,
+             twitch_username = $5, youtube_url = $6, x_username = $7,
+             pronouns = $8, location = $9, favorite_game = $10,
+             favorite_game_id = $11, favorite_game_cover = $12,
+             accent_color = $13, profile_style = $14
+         WHERE id = $15
+         RETURNING *`,
+        [handle, displayName || handle, bio, avatarUrl, twitchUsername, youtubeUrl, xUsername,
+         pronouns, location, favoriteGame, favoriteGameId, favoriteGameCover,
+         accentColor, profileStyle, req.user.id]
+      );
+    } catch (e) {
+      // columns may not exist yet — fall back
+      result = await db.query(
+        `UPDATE users
+         SET username = $1, display_name = $2, bio = $3, avatar_url = $4,
+             twitch_username = $5, youtube_url = $6, x_username = $7
+         WHERE id = $8
+         RETURNING *`,
+        [handle, displayName || handle, bio, avatarUrl, twitchUsername, youtubeUrl, xUsername, req.user.id]
+      );
+    }
 
     await checkAndUnlockAchievements(req.user.id);
 
@@ -3399,8 +4487,7 @@ app.get("/activity", async (req, res) => {
               u.avatar_url AS actor_avatar
        FROM activities a
        JOIN users u ON u.id = a.actor_id
-       WHERE a.actor_id = $1
-          OR a.actor_id IN (SELECT following_id FROM follows WHERE follower_id = $1)
+       WHERE a.actor_id IN (SELECT following_id FROM follows WHERE follower_id = $1)
        ORDER BY a.created_at DESC
        LIMIT 50`,
       [req.user.id]
@@ -3428,81 +4515,354 @@ app.get("/activity", async (req, res) => {
 });
 //#endregion
 
-//#region Reports + Admin moderation
-app.post("/report", async (req, res) => {
+//#region Direct messages
+app.get("/messages", async (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
+  try {
+    const threads = await db.query(
+      `SELECT c.id AS conversation_id,
+              c.updated_at,
+              CASE WHEN c.user_a_id = $1 THEN c.user_b_id ELSE c.user_a_id END AS other_id,
+              u.username AS other_username,
+              u.display_name AS other_display_name,
+              u.avatar_url AS other_avatar,
+              (
+                SELECT content FROM messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.created_at DESC LIMIT 1
+              ) AS last_message,
+              (
+                SELECT created_at FROM messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.created_at DESC LIMIT 1
+              ) AS last_message_at,
+              (
+                SELECT COUNT(*)::int FROM messages m
+                WHERE m.conversation_id = c.id
+                  AND m.sender_id <> $1
+                  AND m.read_at IS NULL
+              ) AS unread_count
+       FROM conversations c
+       JOIN users u ON u.id = CASE WHEN c.user_a_id = $1 THEN c.user_b_id ELSE c.user_a_id END
+       WHERE c.user_a_id = $1 OR c.user_b_id = $1
+       ORDER BY COALESCE(c.updated_at, c.created_at) DESC
+       LIMIT 50`,
+      [req.user.id]
+    );
+    res.render("messages.ejs", {
+      userlog: req.user,
+      threads: threads.rows,
+      activeThread: null,
+      messages: [],
+      otherUser: null,
+    });
+  } catch (err) {
+    console.error("Messages inbox error:", err.message);
+    res.render("messages.ejs", {
+      userlog: req.user,
+      threads: [],
+      activeThread: null,
+      messages: [],
+      otherUser: null,
+      error: "Messages need the DM migration. Run migrations/017_messages.sql",
+    });
+  }
+});
+
+app.get("/messages/u/:username", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const username = req.params.username.toLowerCase();
+  try {
+    const otherRes = await db.query(
+      `SELECT id, username, display_name, avatar_url FROM users WHERE LOWER(username) = $1`,
+      [username]
+    );
+    if (!otherRes.rows.length) return res.status(404).send("User not found");
+    const other = otherRes.rows[0];
+    if (other.id === req.user.id) return res.redirect("/messages");
+
+    // Blocks either way
+    try {
+      const blocked = await db.query(
+        `SELECT 1 FROM blocks
+         WHERE (blocker_id = $1 AND blocked_id = $2)
+            OR (blocker_id = $2 AND blocked_id = $1)`,
+        [req.user.id, other.id]
+      );
+      if (blocked.rows.length) {
+        return res.status(403).send("You can’t message this user.");
+      }
+    } catch (e) {}
+
+    const a = Math.min(req.user.id, other.id);
+    const b = Math.max(req.user.id, other.id);
+    let conv = await db.query(
+      `SELECT * FROM conversations WHERE user_a_id = $1 AND user_b_id = $2`,
+      [a, b]
+    );
+    if (!conv.rows.length) {
+      conv = await db.query(
+        `INSERT INTO conversations (user_a_id, user_b_id)
+         VALUES ($1, $2)
+         ON CONFLICT (user_a_id, user_b_id) DO UPDATE SET user_a_id = EXCLUDED.user_a_id
+         RETURNING *`,
+        [a, b]
+      );
+    }
+    const conversation = conv.rows[0];
+
+    const msgs = await db.query(
+      `SELECT m.*, u.username AS sender_username, u.display_name AS sender_display_name
+       FROM messages m
+       JOIN users u ON u.id = m.sender_id
+       WHERE m.conversation_id = $1
+       ORDER BY m.created_at ASC
+       LIMIT 200`,
+      [conversation.id]
+    );
+
+    // Mark as read
+    await db.query(
+      `UPDATE messages SET read_at = CURRENT_TIMESTAMP
+       WHERE conversation_id = $1 AND sender_id <> $2 AND read_at IS NULL`,
+      [conversation.id, req.user.id]
+    );
+
+    const threads = await db.query(
+      `SELECT c.id AS conversation_id,
+              c.updated_at,
+              CASE WHEN c.user_a_id = $1 THEN c.user_b_id ELSE c.user_a_id END AS other_id,
+              u.username AS other_username,
+              u.display_name AS other_display_name,
+              u.avatar_url AS other_avatar,
+              (
+                SELECT content FROM messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.created_at DESC LIMIT 1
+              ) AS last_message,
+              (
+                SELECT COUNT(*)::int FROM messages m
+                WHERE m.conversation_id = c.id
+                  AND m.sender_id <> $1
+                  AND m.read_at IS NULL
+              ) AS unread_count
+       FROM conversations c
+       JOIN users u ON u.id = CASE WHEN c.user_a_id = $1 THEN c.user_b_id ELSE c.user_a_id END
+       WHERE c.user_a_id = $1 OR c.user_b_id = $1
+       ORDER BY COALESCE(c.updated_at, c.created_at) DESC
+       LIMIT 50`,
+      [req.user.id]
+    );
+
+    res.render("messages.ejs", {
+      userlog: req.user,
+      threads: threads.rows,
+      activeThread: conversation,
+      messages: msgs.rows,
+      otherUser: other,
+    });
+  } catch (err) {
+    console.error("DM thread error:", err.message);
+    res.status(500).send("Could not open conversation. Run the messages migration.");
+  }
+});
+
+app.post("/messages/u/:username", async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect("/login");
+  const username = req.params.username.toLowerCase();
+  const content = (req.body.content || "").trim().slice(0, 2000);
+  if (!content) return res.redirect(`/messages/u/${username}`);
+
+  try {
+    const otherRes = await db.query(
+      `SELECT id, username FROM users WHERE LOWER(username) = $1`,
+      [username]
+    );
+    if (!otherRes.rows.length) return res.status(404).send("User not found");
+    const other = otherRes.rows[0];
+    if (other.id === req.user.id) return res.redirect("/messages");
+
+    try {
+      const blocked = await db.query(
+        `SELECT 1 FROM blocks
+         WHERE (blocker_id = $1 AND blocked_id = $2)
+            OR (blocker_id = $2 AND blocked_id = $1)`,
+        [req.user.id, other.id]
+      );
+      if (blocked.rows.length) return res.status(403).send("You can’t message this user.");
+    } catch (e) {}
+
+    const a = Math.min(req.user.id, other.id);
+    const b = Math.max(req.user.id, other.id);
+    let conv = await db.query(
+      `INSERT INTO conversations (user_a_id, user_b_id)
+       VALUES ($1, $2)
+       ON CONFLICT (user_a_id, user_b_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [a, b]
+    );
+    const conversation = conv.rows[0];
+
+    await db.query(
+      `INSERT INTO messages (conversation_id, sender_id, content)
+       VALUES ($1, $2, $3)`,
+      [conversation.id, req.user.id, content]
+    );
+    await db.query(
+      `UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+      [conversation.id]
+    );
+
+    // Optional in-app notification
+    try {
+      await createNotification({
+        userId: other.id,
+        actorId: req.user.id,
+        type: "message",
+        entityType: "user",
+        entityId: req.user.id,
+        message: content.slice(0, 80),
+      });
+    } catch (e) {}
+
+    res.redirect(`/messages/u/${username}`);
+  } catch (err) {
+    console.error("Send DM error:", err.message);
+    res.status(500).send("Could not send message");
+  }
+});
+//#endregion
+
+//#region Reports + Admin moderation
+
+app.post("/report", async (req, res) => {
+  const json = wantsJson(req);
+  if (!req.isAuthenticated()) {
+    if (json) return res.status(401).json({ error: "Login required" });
+    return res.redirect("/login");
+  }
   const targetType = (req.body.target_type || "").trim();
   const targetId = parseInt(req.body.target_id, 10);
   const reason = (req.body.reason || "").trim().slice(0, 500);
   if (!["review", "user", "comment"].includes(targetType) || !targetId) {
+    if (json) return res.status(400).json({ error: "Invalid report" });
     return res.redirect(req.get("Referer") || "/");
   }
   try {
+    // Avoid duplicate open reports from same user for same target
+    const existing = await db.query(
+      `SELECT id FROM reports
+       WHERE reporter_id = $1 AND target_type = $2 AND target_id = $3
+         AND (status IS NULL OR status = 'open')
+       LIMIT 1`,
+      [req.user.id, targetType, targetId]
+    );
+    if (existing.rows.length) {
+      if (json) return res.json({ ok: true, reported: true, already: true });
+      return res.redirect(req.get("Referer") || "/");
+    }
     await db.query(
       `INSERT INTO reports (reporter_id, target_type, target_id, reason)
        VALUES ($1, $2, $3, $4)`,
-      [req.user.id, targetType, targetId, reason || null]
+      [req.user.id, targetType, targetId, reason || "Reported review"]
     );
+    if (json) return res.json({ ok: true, reported: true });
   } catch (err) {
     console.error("Report error:", err.message);
+    if (json) return res.status(500).json({ error: "Could not submit report" });
   }
-  const redirect = req.get("Referer") || "/";
-  res.redirect(redirect);
+  res.redirect(req.get("Referer") || "/");
 });
 
 app.get("/admin", ensureAdmin, async (req, res) => {
   try {
-    const openReports = await db.query(
-      `SELECT r.*,
-              u.username AS reporter_username,
-              u.display_name AS reporter_display_name
-       FROM reports r
-       LEFT JOIN users u ON u.id = r.reporter_id
-       WHERE r.status = 'open'
-       ORDER BY r.created_at DESC
-       LIMIT 50`
-    );
-
-    const recentReviews = await db.query(
-      `SELECT g.id, g.title, g.rating, g.notes, g.user_id, g.game_id,
-              u.username, u.display_name
-       FROM games g
-       LEFT JOIN users u ON u.id = g.user_id
-       ORDER BY g.id DESC
-       LIMIT 30`
-    );
-
-    const recentComments = await db.query(
-      `SELECT c.id, c.content, c.review_id, c.user_id, c.created_at,
-              u.username, u.display_name
-       FROM comments c
-       LEFT JOIN users u ON u.id = c.user_id
-       ORDER BY c.created_at DESC
-       LIMIT 30`
-    );
-
-    const users = await db.query(
-      `SELECT id, email, username, display_name, is_admin, is_banned, created_at,
-              COALESCE(total_xp, 0) AS total_xp
-       FROM users
-       ORDER BY id DESC
-       LIMIT 50`
-    );
+    const perPage = 15;
+    const tab = ["reports", "reviews", "comments", "users"].includes(String(req.query.tab || ""))
+      ? String(req.query.tab)
+      : "reports";
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const offset = (page - 1) * perPage;
 
     const stats = {
       users: (await db.query("SELECT COUNT(*)::int AS c FROM users")).rows[0].c,
       reviews: (await db.query("SELECT COUNT(*)::int AS c FROM games")).rows[0].c,
       comments: (await db.query("SELECT COUNT(*)::int AS c FROM comments")).rows[0].c,
-      openReports: openReports.rows.length,
+      openReports: (
+        await db.query(`SELECT COUNT(*)::int AS c FROM reports WHERE status = 'open'`)
+      ).rows[0].c,
     };
+
+    let reports = [];
+    let recentReviews = [];
+    let recentComments = [];
+    let users = [];
+    let totalForTab = 0;
+
+    if (tab === "reports") {
+      totalForTab = stats.openReports;
+      const openReports = await db.query(
+        `SELECT r.*,
+                u.username AS reporter_username,
+                u.display_name AS reporter_display_name
+         FROM reports r
+         LEFT JOIN users u ON u.id = r.reporter_id
+         WHERE r.status = 'open'
+         ORDER BY r.created_at DESC
+         LIMIT $1 OFFSET $2`,
+        [perPage, offset]
+      );
+      reports = openReports.rows;
+    } else if (tab === "reviews") {
+      totalForTab = stats.reviews;
+      const result = await db.query(
+        `SELECT g.id, g.title, g.rating, g.notes, g.user_id, g.game_id,
+                u.username, u.display_name
+         FROM games g
+         LEFT JOIN users u ON u.id = g.user_id
+         ORDER BY g.id DESC
+         LIMIT $1 OFFSET $2`,
+        [perPage, offset]
+      );
+      recentReviews = result.rows;
+    } else if (tab === "comments") {
+      totalForTab = stats.comments;
+      const result = await db.query(
+        `SELECT c.id, c.content, c.review_id, c.user_id, c.created_at,
+                u.username, u.display_name
+         FROM comments c
+         LEFT JOIN users u ON u.id = c.user_id
+         ORDER BY c.created_at DESC
+         LIMIT $1 OFFSET $2`,
+        [perPage, offset]
+      );
+      recentComments = result.rows;
+    } else {
+      totalForTab = stats.users;
+      const result = await db.query(
+        `SELECT id, email, username, display_name, is_admin, is_banned, created_at,
+                COALESCE(total_xp, 0) AS total_xp
+         FROM users
+         ORDER BY id DESC
+         LIMIT $1 OFFSET $2`,
+        [perPage, offset]
+      );
+      users = result.rows;
+    }
+
+    const totalPages = Math.max(1, Math.ceil(totalForTab / perPage));
 
     res.render("admin.ejs", {
       userlog: req.user,
-      reports: openReports.rows,
-      recentReviews: recentReviews.rows,
-      recentComments: recentComments.rows,
-      users: users.rows,
+      reports,
+      recentReviews,
+      recentComments,
+      users,
       stats,
+      adminTab: tab,
+      page,
+      totalPages,
+      totalForTab,
+      perPage,
     });
   } catch (err) {
     console.error("Admin panel error:", err);

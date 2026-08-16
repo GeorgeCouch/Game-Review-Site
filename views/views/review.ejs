@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>
+      <%= review.title %> – <%= review.author_display_name || review.author_username || "Review" %> – GameCouch
+    </title>
+    <%- include('partials/head') %>
+    <meta property="og:title" content="<%= review.title %>     <meta property="og:description" content="<%= (review.notes || '').slice(0, 160) %>  </head>
+  <body>
+    <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
+<div class="page-wrapper">
+      <div class="page-header">
+        <div>
+          <h1>Review</h1>
+          <p>
+            <% if (review.author_username) { %>
+              by <a href="/u/<%= review.author_username %>" style="color: var(--accent);"><%= review.author_display_name || review.author_username %></a>
+            <% } %>
+            · <a href="/game/<%= review.game_id %>" style="color: var(--accent);"><%= review.title %></a>
+          </p>
+        </div>
+      </div>
+
+      <div class="game-list" style="max-width: 720px;">
+        <% const i = 0; %>
+        <%- include("partials/game.ejs", { i: i }) %>
+      </div>
+
+      <div class="share-box">
+        <label class="form-label" style="margin-bottom: 0.35rem;">Share this review</label>
+        <div class="share-row">
+          <input class="form-control" type="text" id="share-url" value="<%= shareUrl %>" readonly />
+          <button type="button" class="nav-btn nav-btn-primary" id="copy-share">Copy</button>
+        </div>
+        <div id="copy-status" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;"></div>
+      </div>
+    </div>
+
+    <script src="/js/likes.js"></script>
+    <script src="/js/comments.js"></script>
+    <script>
+      function toggleNotes(id) {
+        const notes = document.getElementById("notes-" + id);
+        const btn = document.getElementById("expand-" + id);
+        if (!notes || !btn) return;
+        if (notes.classList.contains("clamped")) {
+          notes.classList.remove("clamped");
+          btn.textContent = "Show less";
+        } else {
+          notes.classList.add("clamped");
+          btn.textContent = "Read more";
+        }
+      }
+      function startEditComment(id) {
+        document.getElementById("comment-body-" + id).style.display = "none";
+        document.getElementById("edit-form-" + id).style.display = "block";
+      }
+      function cancelEditComment(id) {
+        document.getElementById("comment-body-" + id).style.display = "block";
+        document.getElementById("edit-form-" + id).style.display = "none";
+      }
+      document.getElementById("copy-share").addEventListener("click", async () => {
+        const input = document.getElementById("share-url");
+        try {
+          await navigator.clipboard.writeText(input.value);
+          document.getElementById("copy-status").textContent = "Link copied!";
+        } catch (e) {
+          input.select();
+          document.execCommand("copy");
+          document.getElementById("copy-status").textContent = "Link copied!";
+        }
+      });
+    </script>
+      <script src="/js/nav.js"></script>
+  </body>
+</html>

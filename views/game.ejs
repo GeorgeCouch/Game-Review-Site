@@ -1,17 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title><%= gameTitle %> – GameCouch</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-      crossorigin="anonymous"
-    />
-    <link rel="stylesheet" href="/styles/styles.css" />
+    <%- include('partials/head') %>
   </head>
   <body>
     <%- include('partials/site-nav', { userlog: typeof userlog !== 'undefined' ? userlog : (typeof user !== 'undefined' ? user : null), showSort: false }) %>
@@ -71,9 +62,18 @@
                 </form>
               <% } %>
             </div>
-            <a href="/add" class="nav-btn nav-btn-primary" style="margin-top: 0.75rem; display: inline-block;">
+            <button
+              type="button"
+              class="nav-btn nav-btn-primary"
+              style="margin-top: 0.75rem; display: inline-block;"
+              data-open-review-modal
+              data-game-id="<%= gameId %>"
+              data-game-name="<%= gameTitle %>"
+              data-game-cover="<%= coverUrl || '' %>"
+              data-game-released="<%= released || '' %>"
+            >
               + Review this game
-            </a>
+            </button>
           <% } else { %>
             <a href="/login" class="nav-btn nav-btn-primary" style="margin-top: 0.75rem; display: inline-block;">
               Log in to track / review
@@ -82,7 +82,32 @@
         </div>
       </div>
 
-      <% if (typeof topStream !== "undefined" && topStream) { %>
+      
+      <% if (typeof fansAlsoLiked !== "undefined" && fansAlsoLiked && fansAlsoLiked.length) { %>
+        <section class="yir-section" style="margin-top: 1.5rem;">
+          <h2 style="font-size: 1.1rem;">Fans also liked</h2>
+          <div class="fans-also-grid">
+            <% fansAlsoLiked.forEach(function(g) { %>
+              <a href="/game/<%= g.game_id %>" class="fans-also-card">
+                <% if (g.cover_url) { %>
+                  <img src="<%= g.cover_url %>" alt="" />
+                <% } else { %>
+                  <div class="fans-also-fallback"><%= (g.title || "?").charAt(0) %></div>
+                <% } %>
+                <div class="fans-also-meta">
+                  <div class="fans-also-title"><%= g.title %></div>
+                  <div class="fans-also-sub">
+                    <%= g.shared_reviewers %> shared
+                    <% if (g.avg_rating != null) { %> · <%= Number(g.avg_rating).toFixed(1) %>★ <% } %>
+                  </div>
+                </div>
+              </a>
+            <% }) %>
+          </div>
+        </section>
+      <% } %>
+
+<% if (typeof topStream !== "undefined" && topStream) { %>
         <div class="twitch-embed-section" style="margin-top: 1.5rem;">
           <div class="twitch-embed-header">
             <span class="live-badge">LIVE</span>
@@ -108,17 +133,20 @@
         </div>
       <% } %>
 
-      <div class="page-header" style="margin-top: 2rem;">
+      <div class="page-header" style="margin-top: 2rem; display:flex; justify-content:space-between; align-items:flex-end; gap:1rem; flex-wrap:wrap;">
         <div>
-          <h2 style="font-size: 1.25rem; margin: 0; font-weight: 700;">Reviews</h2>
+          <h2 style="font-size: 1.25rem; margin: 0; font-weight: 700;">Top reviews</h2>
           <p style="margin: 0.2rem 0 0; color: var(--text-muted); font-size: 0.9rem;">
-            <% if (userInfo && userInfo.length) { %>
-              <%= userInfo.length %> review<%= userInfo.length === 1 ? "" : "s" %> from the community
+            <% if (reviewCount) { %>
+              Showing top <%= Math.min(5, userInfo ? userInfo.length : 0) %> of <%= reviewCount %> by likes
             <% } else { %>
               No reviews yet
             <% } %>
           </p>
         </div>
+        <% if (reviewCount) { %>
+          <a href="/game/<%= gameId %>/reviews" class="nav-btn nav-btn-primary">Read all reviews</a>
+        <% } %>
       </div>
 
       <% if (!userInfo || userInfo.length === 0) { %>
@@ -127,7 +155,7 @@
           <p>Be the first to review this game.</p>
           <% if (typeof userlog !== "undefined" && userlog) { %>
             <a href="/log" class="nav-btn nav-btn-primary">+ Log</a>
-          <a href="/add" class="nav-btn">Review</a>
+          <button type="button" class="nav-btn" data-open-review-modal data-game-id="<%= gameId %>" data-game-name="<%= gameTitle %>" data-game-cover="<%= coverUrl || '' %>" data-game-released="<%= released || '' %>">Review</button>
           <% } %>
         </div>
       <% } else { %>
@@ -138,13 +166,8 @@
         </div>
       <% } %>
     </div>
-
-    <script
-      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
-      crossorigin="anonymous"
-    ></script>
-    <script src="/js/likes.js"></script>
+<script src="/js/likes.js"></script>
+    <script src="/js/report.js"></script>
     <script src="/js/comments.js"></script>
     <script>
       function toggleNotes(id) {
