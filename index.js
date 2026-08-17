@@ -45,18 +45,35 @@ const RESERVED_USERNAMES = new Set([
 //#endregion
 
 //#region Database Connection Config
-const db = process.env.DATABASE_URL
+const databaseUrl = (process.env.DATABASE_URL || "").trim();
+if (!databaseUrl) {
+  console.error(
+    "FATAL: DATABASE_URL is not set. " +
+      "On Railway, add DATABASE_URL on the *web* service " +
+      "(reference ${{Postgres.DATABASE_URL}} or paste the Postgres URL)."
+  );
+  if (process.env.NODE_ENV === "production") {
+    // Still create a pool so boot logs are visible, but queries will fail clearly
+    console.error("Continuing boot, but DB queries will fail until DATABASE_URL is fixed.");
+  }
+}
+const db = databaseUrl
   ? new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: databaseUrl,
       ssl: process.env.PG_SSL === "false" ? false : { rejectUnauthorized: false },
     })
   : new Pool({
       user: process.env.PG_USER,
-      host: process.env.PG_HOST,
+      host: process.env.PG_HOST || "127.0.0.1",
       database: process.env.PG_DATABASE,
       password: process.env.PG_PASSWORD,
-      port: process.env.PG_PORT,
+      port: Number(process.env.PG_PORT) || 5432,
     });
+console.log(
+  databaseUrl
+    ? "Database: using DATABASE_URL"
+    : "Database: using PG_* / localhost (DATABASE_URL missing)"
+);
 //#endregion
 
 // Ensure profile customization columns exist (safe to run every boot)
@@ -290,12 +307,51 @@ function totpOtpauthUrl(secret, email) {
 }
 
 async function sendMail({ to, subject, text, html }) {
+  const from =
+    process.env.EMAIL_FROM ||
+    process.env.SMTP_FROM ||
+    process.env.SMTP_USER ||
+    "GameCouch <onboarding@resend.dev>";
+
+  // Prefer Resend HTTP API (works on Railway; SMTP ports are often blocked)
+  const resendKey = (process.env.RESEND_API_KEY || "").trim();
+  if (resendKey) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from,
+          to: [to],
+          subject,
+          text: text || undefined,
+          html: html || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data && (data.message || data.error)) || `Resend HTTP ${res.status}`);
+      }
+      console.log("[mail:sent:resend]", { to, subject, id: data && data.id });
+      return { ok: true, messageId: data && data.id, provider: "resend" };
+    } catch (e) {
+      console.error("sendMail Resend error:", e.message);
+      console.log("[mail:fallback] Could not send. Email contents:");
+      console.log("  To:", to);
+      console.log("  Subject:", subject);
+      console.log("  Body:\n" + text);
+      return { ok: false, error: e.message };
+    }
+  }
+
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@gamecouch.local";
   if (!host || !user || !pass) {
-    console.log("[mail:dev] SMTP not configured. Email contents:");
+    console.log("[mail:dev] No RESEND_API_KEY or SMTP configured. Email contents:");
     console.log("  To:", to);
     console.log("  Subject:", subject);
     console.log("  Body:\n" + text);
@@ -311,13 +367,12 @@ async function sendMail({ to, subject, text, html }) {
       secure,
       auth: { user, pass },
       tls: {
-        // Helpful for some local / corporate SMTP setups
         rejectUnauthorized: String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || "true") !== "false",
       },
     });
     const info = await transporter.sendMail({ from, to, subject, text, html });
-    console.log("[mail:sent]", { to, subject, messageId: info && info.messageId });
-    return { ok: true, messageId: info && info.messageId };
+    console.log("[mail:sent:smtp]", { to, subject, messageId: info && info.messageId });
+    return { ok: true, messageId: info && info.messageId, provider: "smtp" };
   } catch (e) {
     console.error("sendMail error:", e.message);
     console.log("[mail:fallback] Could not send. Email contents:");
