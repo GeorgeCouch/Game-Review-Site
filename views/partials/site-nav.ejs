@@ -127,11 +127,21 @@
       <% } else { %>
         <a href="/login" class="nav-btn nav-btn-primary nav-cta-mobile">Login</a>
       <% } %>
-      <button type="button" class="nav-burger" id="nav-burger" aria-label="Open menu" aria-expanded="false" aria-controls="nav-drawer" aria-haspopup="true">
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-      </button>
+      <% if (typeof userlog !== "undefined" && userlog) { %>
+        <button type="button" class="nav-burger nav-burger-avatar" id="nav-burger" aria-label="Open menu" aria-expanded="false" aria-controls="nav-drawer" aria-haspopup="true" title="Menu">
+          <% if (userlog.avatar_url) { %>
+            <img src="<%= userlog.avatar_url %>" alt="" class="nav-profile-avatar" />
+          <% } else { %>
+            <span class="nav-profile-fallback"><%= (userlog.display_name || userlog.username || "?").charAt(0).toUpperCase() %></span>
+          <% } %>
+        </button>
+      <% } else { %>
+        <button type="button" class="nav-burger" id="nav-burger" aria-label="Open menu" aria-expanded="false" aria-controls="nav-drawer" aria-haspopup="true">
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </button>
+      <% } %>
     </div>
   </div>
 
@@ -161,42 +171,38 @@
           <a href="/activity" class="nav-drawer-link">Activity</a>
         <% } %>
         <a href="/leaderboards" class="nav-drawer-link">Boards</a>
-        <% if (typeof userlog !== "undefined" && userlog) { %>
-          <a href="/messages" class="nav-drawer-link">Messages</a>
-        <% } %>
       </div>
 
       <% if (typeof userlog !== "undefined" && userlog) { %>
         <p class="nav-drawer-section">Account</p>
         <div class="nav-drawer-group">
-          <button type="button" class="nav-drawer-link nav-drawer-link-cta" data-open-review-modal>+ Review</button>
           <% if (userlog.username) { %>
             <a href="/u/<%= userlog.username %>" class="nav-drawer-link">Profile</a>
           <% } %>
+          <a href="/messages" class="nav-drawer-link">Messages</a>
+          <div class="nav-drawer-theme">
+            <div class="nav-drawer-theme-label">
+              <span class="nav-drawer-theme-title">Theme</span>
+              <span class="nav-drawer-theme-sub">Light / dark</span>
+            </div>
+            <button type="button" class="theme-switch" id="nav-theme-toggle-mobile" aria-label="Toggle light and dark mode">
+              <span class="theme-switch-icon theme-switch-sun" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+                </svg>
+              </span>
+              <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
+              <span class="theme-switch-icon theme-switch-moon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/>
+                </svg>
+              </span>
+            </button>
+          </div>
           <a href="/settings" class="nav-drawer-link">Settings</a>
           <% if (typeof isAdmin !== "undefined" && isAdmin) { %>
             <a href="/admin" class="nav-drawer-link">Admin</a>
           <% } %>
-        <div class="nav-drawer-theme">
-          <div class="nav-drawer-theme-label">
-            <span class="nav-drawer-theme-title">Theme</span>
-            <span class="nav-drawer-theme-sub">Light / dark</span>
-          </div>
-          <button type="button" class="theme-switch" id="nav-theme-toggle-mobile" aria-label="Toggle light and dark mode">
-            <span class="theme-switch-icon theme-switch-sun" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-              </svg>
-            </span>
-            <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
-            <span class="theme-switch-icon theme-switch-moon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/>
-              </svg>
-            </span>
-          </button>
-        </div>
-
           <a href="/logout" class="nav-drawer-link nav-drawer-link-danger">Logout</a>
         </div>
       <% } else { %>

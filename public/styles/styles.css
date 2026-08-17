@@ -10729,3 +10729,40 @@ a.page-back-link {
   text-align: left;
   align-self: center;
 }
+
+
+/* Mobile menu trigger = profile avatar */
+.nav-burger.nav-burger-avatar {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--surface-2, var(--surface));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.nav-burger.nav-burger-avatar .nav-profile-avatar,
+.nav-burger.nav-burger-avatar .nav-profile-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.nav-burger.nav-burger-avatar.is-open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.25);
+}
+
+.nav-burger.nav-burger-avatar span:not(.nav-profile-fallback) {
+  display: none;
+}
