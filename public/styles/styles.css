@@ -10731,44 +10731,56 @@ a.page-back-link {
 }
 
 
-/* Mobile menu trigger = profile avatar (circle) */
-button.nav-burger.nav-burger-avatar,
-.nav-burger.nav-burger-avatar {
+
+/* Mobile menu trigger = circular profile photo */
+button.nav-burger.nav-burger-avatar {
   width: 36px !important;
   height: 36px !important;
   min-width: 36px !important;
   min-height: 36px !important;
   padding: 0 !important;
+  margin: 0 !important;
   border-radius: 50% !important;
   border: 2px solid var(--border) !important;
-  background: var(--surface-2, var(--surface)) !important;
+  background: var(--surface-2, #1a1f2b) !important;
   display: inline-flex !important;
   flex-direction: row !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 0 !important;
   overflow: hidden !important;
+  line-height: 0 !important;
 }
 
-button.nav-burger.nav-burger-avatar img.nav-profile-avatar,
-.nav-burger.nav-burger-avatar .nav-profile-avatar,
-.nav-burger.nav-burger-avatar .nav-profile-fallback {
-  width: 100% !important;
-  height: 100% !important;
+button.nav-burger.nav-burger-avatar img {
+  display: block !important;
+  width: 36px !important;
+  height: 36px !important;
+  max-width: none !important;
   border-radius: 50% !important;
   object-fit: cover !important;
+  object-position: center !important;
+  border: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+button.nav-burger.nav-burger-avatar .nav-profile-fallback {
   display: flex !important;
+  width: 36px !important;
+  height: 36px !important;
   align-items: center !important;
   justify-content: center !important;
+  border-radius: 50% !important;
   font-weight: 700 !important;
   font-size: 0.9rem !important;
+  color: var(--text) !important;
+  background: transparent !important;
+  line-height: 1 !important;
 }
 
-.nav-burger.nav-burger-avatar.is-open {
+button.nav-burger.nav-burger-avatar.is-open {
   border-color: var(--accent) !important;
   box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.25) !important;
-}
-
-.nav-burger.nav-burger-avatar > span:not(.nav-profile-fallback) {
-  display: none !important;
 }
