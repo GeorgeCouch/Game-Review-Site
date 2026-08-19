@@ -185,17 +185,21 @@
       if (!item) return;
       var id = item.getAttribute("data-id");
       if (!id) return;
-      // mark read when opening the notification link
+      if (link) e.preventDefault();
+      item.classList.remove("unread");
+      var go = link ? link.getAttribute("href") : null;
       try {
-        var res = await fetch("/api/notifications/" + encodeURIComponent(id) + "/read", {
+        await fetch("/api/notifications/" + encodeURIComponent(id) + "/read", {
           method: "POST",
           credentials: "same-origin",
           headers: { Accept: "application/json" },
-        });
-        var data = await res.json();
-        if (data && typeof data.unread === "number") setBadge(data.unread);
-        item.classList.remove("unread");
+          keepalive: true,
+        }).then(function (res) { return res.json().catch(function () { return {}; }); })
+          .then(function (data) {
+            if (data && typeof data.unread === "number") setBadge(data.unread);
+          });
       } catch (err) {}
+      if (go && go !== "#") window.location.href = go;
     });
 
     if (clearBtn) {
