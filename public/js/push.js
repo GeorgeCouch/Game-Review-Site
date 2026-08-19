@@ -25,6 +25,34 @@
     return reg;
   }
 
+  async function refreshButtonState() {
+    try {
+      if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setStatus("Push is not supported in this browser.");
+        btn.disabled = true;
+        return;
+      }
+      const perm = Notification.permission;
+      const reg = await navigator.serviceWorker.getRegistration("/sw.js") || await navigator.serviceWorker.getRegistration();
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      if (perm === "granted" && sub) {
+        btn.textContent = "Push enabled";
+        btn.disabled = true;
+        setStatus("Push notifications are on for this device.");
+      } else if (perm === "denied") {
+        btn.textContent = "Push blocked";
+        btn.disabled = true;
+        setStatus("Notifications are blocked. Enable them in the browser site settings.");
+      } else {
+        btn.textContent = "Enable push alerts";
+        btn.disabled = false;
+        setStatus("");
+      }
+    } catch (e) {}
+  }
+
+  refreshButtonState();
+
   btn.addEventListener("click", async () => {
     btn.disabled = true;
     setStatus("Enabling…");

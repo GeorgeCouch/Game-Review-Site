@@ -1307,23 +1307,40 @@ async function sendPushToUser(userId, payload) {
   } catch (e) {}
 
   let title = "GameCouch";
-  let body = "You have a new notification";
+  let body = payload.message || "You have a new notification";
+  let url = "/explore";
+  const gameName = payload.message && !/replied to your comment/i.test(payload.message)
+    ? payload.message
+    : "";
+
   if (payload.type === "like") {
     title = "New like";
-    body = `${actorName} liked your review` + (payload.message ? ` of ${payload.message}` : "");
+    body = `${actorName} liked your review` + (gameName ? ` of ${gameName}` : "");
+    url = payload.entityId ? `/review/${payload.entityId}` : "/explore";
   } else if (payload.type === "follow") {
     title = "New follower";
     body = `${actorName} followed you`;
+    url = "/notifications";
+  } else if (payload.type === "reply") {
+    title = "New reply";
+    body = `${actorName} replied to your comment`;
+    url = payload.entityId ? `/review/${payload.entityId}` : "/explore";
   } else if (payload.type === "comment") {
     title = "New comment";
-    body = `${actorName} commented on your review` + (payload.message ? ` of ${payload.message}` : "");
+    if (/replied to your comment/i.test(payload.message || "")) {
+      title = "New reply";
+      body = `${actorName} replied to your comment`;
+    } else {
+      body = `${actorName} commented on your review` + (gameName ? ` of ${gameName}` : "");
+    }
+    url = payload.entityType === "comment" && payload.entityId
+      ? `/comment/${payload.entityId}/review`
+      : payload.entityId
+        ? `/review/${payload.entityId}`
+        : "/explore";
   }
 
-  const data = {
-    title,
-    body,
-    url: "/explore",
-  };
+  const data = { title, body, url };
 
   let subs = [];
   try {
