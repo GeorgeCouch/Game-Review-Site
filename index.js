@@ -1747,9 +1747,9 @@ app.post("/comment", async (req, res) => {
           await createNotification({
             userId: parent.rows[0].user_id,
             actorId: req.user.id,
-            type: "comment",
-            entityType: "comment",
-            entityId: parent_id,
+            type: "reply",
+            entityType: "review",
+            entityId: review_id,
             message: "replied to your comment",
           });
         }
@@ -4026,6 +4026,19 @@ app.post("/api/push/unsubscribe", async (req, res) => {
 //#endregion
 
 //#region Notification routes
+
+app.get("/comment/:id/review", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.redirect("/explore");
+    const r = await db.query("SELECT review_id FROM comments WHERE id = $1", [id]);
+    if (!r.rows[0]) return res.redirect("/explore");
+    return res.redirect("/review/" + r.rows[0].review_id);
+  } catch (e) {
+    return res.redirect("/explore");
+  }
+});
+
 app.get("/notifications", (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
   return res.redirect("/explore");

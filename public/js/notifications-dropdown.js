@@ -34,10 +34,12 @@
   }
 
   function hrefFor(n) {
-    if (n.type === "like" || n.type === "comment") {
-      return n.entity_id ? "/review/" + n.entity_id : n.actor_username ? "/u/" + n.actor_username : "#";
-    }
     if (n.type === "follow") return n.actor_username ? "/u/" + n.actor_username : "#";
+    if (n.entity_type === "comment" && n.entity_id) return "/comment/" + n.entity_id + "/review";
+    if ((n.type === "like" || n.type === "comment" || n.type === "reply") && n.entity_id) {
+      return "/review/" + n.entity_id;
+    }
+    if (n.entity_type === "review" && n.entity_id) return "/review/" + n.entity_id;
     return n.actor_username ? "/u/" + n.actor_username : "#";
   }
 
